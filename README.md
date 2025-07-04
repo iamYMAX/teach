@@ -14,17 +14,25 @@ This project aims to create an educational platform consisting of:
 ## Bot Features
 
 -   **User Authentication:** Secure access to bot features using `/login <password>` and `/logout`.
+-   **User Profile:**
+    -   Tracks user's name, registration date, total tests taken, total correct answers, and calculates a level.
+    -   Viewable via "👤 Профиль" button or `/profile` command.
+    -   Name can be set using the `/setname` command.
 -   **Course Material Access:**
     -   `/lesson <number>`: Displays theory and practice materials for the specified lesson number of the Junior Admin course.
 -   **Interactive Testing:**
-    -   `/test <number>`: Starts an interactive test session for the Junior Admin course (currently, the argument is noted but a single test loads). Users answer questions by sending the number of their chosen option.
+    -   `/test <number>`: Starts an interactive test session for the Junior Admin course. Users answer questions by pressing dynamically generated option buttons.
     -   `/stoptest`: Allows users to stop an ongoing test.
--   **Command Keyboard:** After successful login, a custom keyboard with main commands ("📘 Уроки", "🧪 Тесты", "🔐 Выйти") is displayed for easy access.
+    -   Test results (score, date) are saved to the user's history.
+-   **Test History:**
+    -   Viewable via "История" button or `/history` command.
+    -   Lists completed tests, scores, and dates.
+-   **Command Keyboard:** After successful login, a custom keyboard with main commands ("📘 Уроки", "🧪 Тесты", "История", "👤 Профиль", "🔐 Выйти") is displayed for easy access.
 -   **Navigation & Help:**
     -   `/start`: Displays a welcome message and initial instructions.
     -   `/help`: Provides a list of available commands based on authentication and test status.
     -   `/courses`: Lists available courses (currently focused on Junior Admin).
--   **Session Persistence:** User authentication and active test states are saved and restored across bot restarts.
+-   **Session Persistence:** User authentication, active test states, test history, and profile information are saved and restored across bot restarts.
 
 ## Setup and Running the Bot
 
@@ -79,6 +87,7 @@ After logging in, a command keyboard will appear with quick actions:
 -   **"📘 Уроки"**: Displays a list of available lessons. Send the number of a lesson to view its details.
 -   **"🧪 Тесты"**: Displays a list of available tests. Send the number of a test to view its details.
 -   **"История"**: Shows your test-taking history (requires prior test completions).
+-   **"👤 Профиль"**: Displays your user profile, including name, level, test statistics, and registration date.
 -   **"🔐 Выйти"**: Logs you out and removes the keyboard.
 
 When viewing lesson details, a "Назад" button will appear to return to the lesson list.
@@ -99,7 +108,9 @@ You can also use the following slash commands:
 -   `/test <test_id_or_lesson_number>`: Manually starts an interactive test (note: this is the old way. The keyboard flow via "🧪 Тесты" -> select test -> "Начать тест" is preferred).
     *   Example: `/test 1`
 -   `/stoptest`: If you are in an active test, this command will stop it. Your progress for that test attempt will not be saved.
--   `/history`: Displays your test-taking history, showing completed tests, scores, and dates. (Equivalent to "История" button)
+-   `/history`: Displays your test-taking history. (Equivalent to "История" button)
+-   `/profile`: Displays your user profile. (Equivalent to "👤 Профиль" button)
+-   `/setname <новое_имя>`: Sets or updates your display name in the profile. (The bot will prompt for the name if `<новое_имя>` is not provided directly with the command in this version, but rather after typing `/setname`).
 
 ## Project Structure Overview
 

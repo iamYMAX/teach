@@ -54,8 +54,9 @@ namespace Omnieye.Bot
 
         private static readonly ReplyKeyboardMarkup MainCommandKeyboard = new ReplyKeyboardMarkup(new[]
         {
-            new[] { new KeyboardButton("📘 Уроки"), new KeyboardButton("🧪 Тесты") },
-            new[] { new KeyboardButton("История"), new KeyboardButton("🔐 Выйти") } // Replaced "📊 История" with "История" for simplicity
+            new KeyboardButton[] { new KeyboardButton("📘 Уроки"), new KeyboardButton("🧪 Тесты") },
+            new KeyboardButton[] { new KeyboardButton("История"), new KeyboardButton("👤 Профиль") },
+            new KeyboardButton[] { new KeyboardButton("🔐 Выйти") }
         })
         {
             ResizeKeyboard = true
@@ -184,8 +185,38 @@ namespace Omnieye.Bot
             long chatId = message.Chat.Id;
             var session = _userSessionService.GetUserSession(userId);
 
-            Console.WriteLine($"Received '{messageText}' from User {userId} in Chat {chatId}. State: {session.CurrentState}");
+            Console.WriteLine($"Received '{messageText}' from User {userId} in Chat {chatId}. State: {session.CurrentState}, WaitingForName: {session.WaitingForNameInput}");
 
+            // 0. Handle WaitingForNameInput (highest priority after basic checks)
+            if (session.WaitingForNameInput)
+            {
+                if (messageText.StartsWith("/")) // If user types a command
+                {
+                    session.WaitingForNameInput = false; // Cancel name input
+                    session.CurrentState = UserCurrentState.MainMenu; // Revert state
+                    await botClient.SendTextMessageAsync(chatId, "Ввод имени отменен.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
+                    // Do not return yet, let the command be processed by subsequent logic only if it's NOT /setname again
+                    if (messageText.ToLower() == "/setname") return; // If they typed /setname again, let it be handled by command switch
+                }
+                else // Assumed to be the name
+                {
+                    session.Profile.Name = messageText.Trim();
+                    session.WaitingForNameInput = false;
+                    _userSessionService.PersistUpdatedProfile(userId);
+
+                    await botClient.SendTextMessageAsync(
+                        chatId,
+                        $"Имя сохранено как *{session.Profile.Name}*.",
+                        parseMode: ParseMode.Markdown,
+                        replyMarkup: MainCommandKeyboard,
+                        cancellationToken: cancellationToken);
+
+                    session.CurrentState = UserCurrentState.MainMenu;
+                    return;
+                }
+            }
+
+            // 1. Handle active test input
             if (session.CurrentState == UserCurrentState.TakingTest)
             {
                 if (!session.ActiveTestId.HasValue || !activeTestsData.TryGetValue(session.ActiveTestId.Value, out var currentTestData) ||
@@ -208,23 +239,20 @@ namespace Omnieye.Bot
                     {
                         await DisplayCurrentTestQuestionAsync(botClient, session, chatId, cancellationToken);
                     }
-                    else // Test finished
+                    else
                     {
-                        // Save to history BEFORE resetting test state in session
                         if (session.ActiveTestId.HasValue)
                         {
                             var historyEntry = new TestHistoryEntry
                             {
-                                TestId = session.ActiveTestId.Value,
-                                TestTitle = currentTestData.TestName,
-                                PassedAt = DateTime.UtcNow,
-                                TotalQuestions = currentTestData.Questions.Count,
+                                TestId = session.ActiveTestId.Value, TestTitle = currentTestData.TestName,
+                                PassedAt = DateTime.UtcNow, TotalQuestions = currentTestData.Questions.Count,
                                 CorrectAnswers = session.CurrentTestScore
                             };
                             session.TestHistory.Add(historyEntry);
                             Console.WriteLine($"Saved test history for user {userId}, test {historyEntry.TestTitle}");
                         }
-
+                        _userSessionService.UpdateProgress(userId, session.CurrentTestScore);
                         string resultMessage = $"Тест \"{currentTestData.TestName}\" завершён.\nВаш результат: {session.CurrentTestScore} из {currentTestData.Questions.Count}.";
                         await botClient.SendTextMessageAsync(chatId, resultMessage, replyMarkup: AfterTestMenuKeyboard, cancellationToken: cancellationToken);
                         session.EndCurrentTest();
@@ -242,6 +270,7 @@ namespace Omnieye.Bot
                 return;
             }
 
+            // 2. Handle keyboard button presses if authenticated
             if (session.IsAuthenticated)
             {
                 bool keyboardButtonProcessed = true;
@@ -249,6 +278,8 @@ namespace Omnieye.Bot
                 {
                     case "📘 Уроки": await HandleLessonsListAsync(botClient, session, chatId, cancellationToken); break;
                     case "🧪 Тесты": await HandleTestsListAsync(botClient, session, chatId, cancellationToken); break;
+                    case "История": await HandleHistoryAsync(botClient, session, chatId, cancellationToken); break;
+                    case "👤 Профиль": await HandleProfileAsync(botClient, session, chatId, cancellationToken); break;
                     case "Назад":
                         if (session.CurrentState == UserCurrentState.ViewingLessonDetail) await HandleLessonsListAsync(botClient, session, chatId, cancellationToken);
                         else if (session.CurrentState == UserCurrentState.ViewingTestDetail) await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
@@ -267,15 +298,13 @@ namespace Omnieye.Bot
                         await HandleStartCommandAsync(botClient, session, chatId, cancellationToken);
                         session.CurrentState = UserCurrentState.MainMenu;
                         break;
-                    case "История": // Handle "История" button
-                        await HandleHistoryAsync(botClient, session, chatId, cancellationToken);
-                        break;
                     case "🔐 Выйти": await HandleLogoutCommandAsync(botClient, session, chatId, cancellationToken); break;
                     default: keyboardButtonProcessed = false; break;
                 }
                 if (keyboardButtonProcessed) return;
             }
 
+            // 3. Handle numeric selection if authenticated and in a list view
             if (session.IsAuthenticated && int.TryParse(messageText, out int selectionNumber) && selectionNumber > 0)
             {
                 bool selectionHandled = false;
@@ -292,6 +321,7 @@ namespace Omnieye.Bot
                 if (selectionHandled) return;
             }
 
+            // 4. Process standard slash commands
             var parts = messageText.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
             var command = parts[0].ToLower();
             var argument = parts.Length > 1 ? parts[1] : null;
@@ -314,9 +344,21 @@ namespace Omnieye.Bot
                     case "/lesson": await HandleLessonCommandAsync(botClient, session, chatId, argument, cancellationToken); break;
                     case "/test": await HandleTestCommandAsync(botClient, session, chatId, argument, cancellationToken); break;
                     case "/stoptest": await HandleStopTestCommandAsync(botClient, session, chatId, cancellationToken); break;
-                    case "/history": // Handle /history command
-                        await HandleHistoryAsync(botClient, session, chatId, cancellationToken);
+                    case "/setname":
+                        if (!session.IsAuthenticated) {
+                            await botClient.SendTextMessageAsync(chatId, "Пожалуйста, сначала авторизуйтесь.", cancellationToken: cancellationToken);
+                            break;
+                        }
+                        if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+                             await botClient.SendTextMessageAsync(chatId, "Нельзя менять имя во время прохождения теста. Завершите или остановите тест (/stoptest).", cancellationToken: cancellationToken);
+                             await DisplayCurrentTestQuestionAsync(botClient, session, chatId, cancellationToken);
+                             break;
+                        }
+                        await botClient.SendTextMessageAsync(chatId, "Введите ваше имя:", replyMarkup: new ReplyKeyboardRemove(), cancellationToken: cancellationToken);
+                        session.WaitingForNameInput = true;
+                        session.CurrentState = UserCurrentState.WaitingForNameInput;
                         break;
+                    case "/profile": await HandleProfileAsync(botClient, session, chatId, cancellationToken); break;
                     default:
                         await botClient.SendTextMessageAsync(chatId, $"Unknown command '{command}'. Try /help for commands.", cancellationToken: cancellationToken);
                         break;
@@ -423,6 +465,9 @@ namespace Omnieye.Bot
                 messages.Add("/courses - List available courses (or use '📘 Уроки' button)");
                 messages.Add("/lesson <number> - Get lesson content");
                 messages.Add("/test <number> - Start a specific test (or use '🧪 Тесты' button)");
+                messages.Add("/profile - View your profile");
+                messages.Add("/history - View your test history");
+                messages.Add("/setname - Set your display name");
                 messages.Add("/start - Welcome message & main menu");
 
                 if (session.CurrentState == UserCurrentState.ViewingLessonDetail) currentKeyboard = LessonDetailKeyboard;
@@ -604,30 +649,12 @@ namespace Omnieye.Bot
             }
         }
 
-        static async Task SendLongMessageAsync(ITelegramBotClient botClient, long chatId, string message, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null, int chunkSize = 4000)
-        {
-            if (string.IsNullOrEmpty(message)) return;
-            var chunks = SplitMessage(message, chunkSize);
-            for (int i = 0; i < chunks.Count; i++)
-            {
-                bool isLastChunk = i == chunks.Count - 1;
-                await botClient.SendTextMessageAsync(chatId, chunks[i], replyMarkup: isLastChunk ? replyMarkup : null, cancellationToken: cancellationToken);
-                if (!isLastChunk) await Task.Delay(200, cancellationToken);
-            }
-        }
-
-        static async Task SendCombinedMessages(ITelegramBotClient botClient, long chatId, List<string> messages, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null)
-        {
-            string combined = string.Join("\n", messages);
-            await SendLongMessageAsync(botClient, chatId, combined, cancellationToken, replyMarkup);
-        }
-
         static async Task HandleHistoryAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
         {
             if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
             {
                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать историю.", cancellationToken: ct);
-                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct); // Re-display current question
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
             }
 
@@ -644,7 +671,59 @@ namespace Omnieye.Bot
                 );
                 await SendLongMessageAsync(botClient, chatId, historyTextBuilder.ToString(), ct, MainCommandKeyboard);
             }
-            session.CurrentState = UserCurrentState.MainMenu; // Viewing history returns to main menu context
+            session.CurrentState = UserCurrentState.MainMenu;
+        }
+
+        static async Task HandleProfileAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать профиль.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+                return;
+            }
+
+            var profile = session.Profile;
+            if (profile.UserId == 0 && session.UserId != 0) {
+                profile.UserId = session.UserId;
+            }
+
+            string name = !string.IsNullOrWhiteSpace(profile.Name) ? profile.Name : $"User {profile.UserId}";
+
+            var profileTextBuilder = new StringBuilder();
+            profileTextBuilder.AppendLine($"👤 *Профиль*");
+            profileTextBuilder.AppendLine($"Имя: {name}");
+            profileTextBuilder.AppendLine($"Уровень: {profile.Level}");
+            profileTextBuilder.AppendLine($"Тестов пройдено: {profile.TotalTestsTaken}");
+            profileTextBuilder.AppendLine($"Правильных ответов: {profile.TotalCorrectAnswers}");
+            profileTextBuilder.AppendLine($"Зарегистрирован: {profile.RegisteredAt:g}");
+
+            await botClient.SendTextMessageAsync(
+                chatId,
+                profileTextBuilder.ToString(),
+                parseMode: ParseMode.Markdown,
+                replyMarkup: MainCommandKeyboard,
+                cancellationToken: ct);
+
+            session.CurrentState = UserCurrentState.MainMenu;
+        }
+
+        static async Task SendLongMessageAsync(ITelegramBotClient botClient, long chatId, string message, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null, int chunkSize = 4000)
+        {
+            if (string.IsNullOrEmpty(message)) return;
+            var chunks = SplitMessage(message, chunkSize);
+            for (int i = 0; i < chunks.Count; i++)
+            {
+                bool isLastChunk = i == chunks.Count - 1;
+                await botClient.SendTextMessageAsync(chatId, chunks[i], replyMarkup: isLastChunk ? replyMarkup : null, cancellationToken: cancellationToken);
+                if (!isLastChunk) await Task.Delay(200, cancellationToken);
+            }
+        }
+
+        static async Task SendCombinedMessages(ITelegramBotClient botClient, long chatId, List<string> messages, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null)
+        {
+            string combined = string.Join("\n", messages);
+            await SendLongMessageAsync(botClient, chatId, combined, cancellationToken, replyMarkup);
         }
 
         public static List<string> SplitMessage(string message, int chunkSize = 4000)

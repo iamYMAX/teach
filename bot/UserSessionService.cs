@@ -9,13 +9,16 @@ namespace Omnieye.Bot.Services
 {
     public class UserSessionService
     {
-        private readonly string _persistenceFilePath;
+        private readonly string _persistenceFilePath; // For the main user_sessions.json
         private ConcurrentDictionary<long, UserSession> _userSessions; // Key: Telegram User ID
+        private readonly UserDataStorageService _userDataStorageService; // For individual profiles
 
         private const string DefaultPersistenceFileName = "user_sessions.json";
 
         public UserSessionService(string persistenceFolderPath = "")
         {
+            _userDataStorageService = new UserDataStorageService(); // Assumes default "user_data" subfolder
+
             if (string.IsNullOrWhiteSpace(persistenceFolderPath))
             {
                 // Default to a 'data' subfolder in the application's base directory
@@ -69,7 +72,21 @@ namespace Omnieye.Bot.Services
 
         public UserSession GetUserSession(long userId)
         {
-            return _userSessions.GetOrAdd(userId, id => new UserSession(id));
+            // GetOrAdd will create a new UserSession(id) if not present.
+            // The UserSession constructor already initializes Profile = new UserProfile(id).
+            var session = _userSessions.GetOrAdd(userId, id => new UserSession(id));
+
+            // Always ensure the profile is loaded/refreshed from UserDataStorageService.
+            // This makes the individual profile file the source of truth for profile data.
+            // UserSession's constructor will have created a default Profile; LoadProfile will overwrite it if a file exists.
+            session.Profile = _userDataStorageService.LoadProfile(userId);
+            if(session.Profile.UserId == 0 && userId != 0) // Ensure UserId is set in profile if loaded from an old file without it
+            {
+                session.Profile.UserId = userId;
+            }
+
+
+            return session;
         }
 
         // Example of how to update a session property, e.g., authentication
@@ -93,6 +110,23 @@ namespace Omnieye.Bot.Services
             var session = GetUserSession(userId);
             // session.EndTest(); // This was for the old test system state.
             session.EndCurrentTest(); // This is for the new test system state.
+        }
+
+        public void UpdateProgress(long userId, int correctAnswersInLastTest) // totalQuestionsInLastTest is not needed if just incrementing
+        {
+            var session = GetUserSession(userId); // This ensures profile is loaded
+            session.Profile.TotalTestsTaken += 1;
+            session.Profile.TotalCorrectAnswers += correctAnswersInLastTest;
+
+            _userDataStorageService.SaveProfile(session.Profile); // Persist updated profile
+            Console.WriteLine($"Progress updated for UserId {userId}. TotalTests: {session.Profile.TotalTestsTaken}, TotalCorrect: {session.Profile.TotalCorrectAnswers}");
+        }
+
+        public void PersistUpdatedProfile(long userId) // Used after /setname
+        {
+            var session = GetUserSession(userId); // Ensure profile is loaded/exists in session
+            _userDataStorageService.SaveProfile(session.Profile);
+            Console.WriteLine($"Profile explicitly persisted for UserId {userId} due to update (e.g., name change).");
         }
     }
 }

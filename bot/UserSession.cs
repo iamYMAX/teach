@@ -35,19 +35,23 @@ namespace Omnieye.Bot.States
         public int CurrentTestScore { get; set; } = 0;
 
         public List<TestHistoryEntry> TestHistory { get; set; } = new List<TestHistoryEntry>();
+        public UserProfile Profile { get; set; }
+
+        public bool WaitingForNameInput { get; set; } = false; // Flag for /setname command
 
 
         [JsonConstructor]
         public UserSession(long userId)
         {
             UserId = userId;
+            Profile = new UserProfile(userId); // Initialize Profile with UserId
         }
 
         // Convenience constructor for new sessions
-        public UserSession(long userId, bool isAuthenticated)
+        public UserSession(long userId, bool isAuthenticated) : this(userId) // Chain to the constructor that sets UserId and Profile
         {
-            UserId = userId;
             IsAuthenticated = isAuthenticated;
+            // Profile is already initialized by the chained constructor
         }
 
         // This method was for the old test structure (from tests_junior_admin.json)

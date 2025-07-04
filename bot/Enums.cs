@@ -7,6 +7,7 @@ namespace Omnieye.Bot.States
         ViewingLessonDetail,
         ViewingTestList,
         ViewingTestDetail,
-        TakingTest
+        TakingTest,
+        WaitingForNameInput // New state for setting name
     }
 }
