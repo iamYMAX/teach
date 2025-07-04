@@ -10,6 +10,7 @@ using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups; // Required for ReplyKeyboardMarkup
 
 namespace Omnieye.Bot
 {
@@ -21,6 +22,15 @@ namespace Omnieye.Bot
 
         private static ITelegramBotClient? _botClient;
         private static CancellationTokenSource? _cts;
+
+        private static readonly ReplyKeyboardMarkup MainCommandKeyboard = new ReplyKeyboardMarkup(new[]
+        {
+            new[] { new KeyboardButton("📘 Уроки"), new KeyboardButton("🧪 Тесты") },
+            new[] { new KeyboardButton("🔐 Выйти") }
+        })
+        {
+            ResizeKeyboard = true
+        };
 
         static async Task Main(string[] args)
         {
@@ -96,14 +106,41 @@ namespace Omnieye.Bot
                     await HandleAnswerInputAsync(botClient, userId, chatId, answerOpt - 1, cancellationToken);
                     return;
                 }
-                // If not a valid answer, it might be /stoptest or /help during a test
+                // If not a valid answer, it might be /stoptest or /help during a test, or a keyboard button press
+            }
+
+            // Handle keyboard button presses first if user is authenticated
+            if (session.IsAuthenticated)
+            {
+                bool keyboardButtonProcessed = true; // Assume it's a keyboard button initially
+                switch (messageText)
+                {
+                    case "📘 Уроки":
+                        // Placeholder: Will call HandleCoursesCommandAsync or a new HandleLessonsListAsync
+                        // For now, using HandleCoursesCommandAsync as it lists "Junior Admin"
+                        await HandleCoursesCommandAsync(botClient, session, chatId, cancellationToken);
+                        break;
+                    case "🧪 Тесты":
+                        // Placeholder: Will call HandleTestCommandAsync or a new HandleTestsListAsync
+                        // For now, sending a placeholder message or starting the default test
+                        await HandleTestCommandAsync(botClient, session, chatId, null, cancellationToken); // Passing null as argument for default test
+                        break;
+                    case "🔐 Выйти":
+                        await HandleLogoutCommandAsync(botClient, session, chatId, cancellationToken);
+                        break;
+                    default:
+                        keyboardButtonProcessed = false; // Not a recognized keyboard button text
+                        break;
+                }
+                if (keyboardButtonProcessed) return; // If it was a keyboard button, we're done with this update
             }
 
             var parts = messageText.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
             var command = parts[0].ToLower();
             var argument = parts.Length > 1 ? parts[1] : null;
 
-            if (!session.IsAuthenticated && command != "/login" && command != "/start" && command != "/help") // Allow /start & /help before login
+            // Standard command authentication check (allow /start, /help, /login before auth)
+            if (!session.IsAuthenticated && command != "/login" && command != "/start" && command != "/help")
             {
                 await botClient.SendTextMessageAsync(chatId, "You are not authenticated. Please use /login <password> to authenticate.", cancellationToken: cancellationToken);
                 return;
@@ -111,6 +148,7 @@ namespace Omnieye.Bot
 
             try
             {
+                // Process standard commands if not a keyboard button
                 switch (command)
                 {
                     case "/login":
@@ -182,7 +220,11 @@ namespace Omnieye.Bot
                 return;
             }
             if (AuthorizationService.Authenticate(session.UserId, password, _userSessionService)) {
-                await botClient.SendTextMessageAsync(chatId, "Authentication successful. You now have access to all commands.", cancellationToken: ct);
+                await botClient.SendTextMessageAsync(
+                    chatId,
+                    "Вы успешно авторизованы.\nВыберите действие:",
+                    replyMarkup: MainCommandKeyboard,
+                    cancellationToken: ct);
             } else {
                 await botClient.SendTextMessageAsync(chatId, "Authentication failed. Invalid password.", cancellationToken: ct);
             }
@@ -199,7 +241,11 @@ namespace Omnieye.Bot
                 return;
             }
             AuthorizationService.Logout(session.UserId, _userSessionService);
-            await botClient.SendTextMessageAsync(chatId, "You have been logged out.", cancellationToken: ct);
+            await botClient.SendTextMessageAsync(
+                chatId,
+                "You have been logged out.",
+                replyMarkup: new ReplyKeyboardRemove(),
+                cancellationToken: ct);
         }
 
 

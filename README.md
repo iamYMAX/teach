@@ -19,6 +19,7 @@ This project aims to create an educational platform consisting of:
 -   **Interactive Testing:**
     -   `/test <number>`: Starts an interactive test session for the Junior Admin course (currently, the argument is noted but a single test loads). Users answer questions by sending the number of their chosen option.
     -   `/stoptest`: Allows users to stop an ongoing test.
+-   **Command Keyboard:** After successful login, a custom keyboard with main commands ("📘 Уроки", "🧪 Тесты", "🔐 Выйти") is displayed for easy access.
 -   **Navigation & Help:**
     -   `/start`: Displays a welcome message and initial instructions.
     -   `/help`: Provides a list of available commands based on authentication and test status.
@@ -74,8 +75,14 @@ The bot understands the following commands. Some commands are only available aft
 ### Authenticated User Commands
 *(Requires successful `/login`)*
 
--   `/logout`: Logs you out of the bot.
--   `/courses`: Lists available course levels.
+After logging in, a command keyboard will appear with quick actions:
+-   **"📘 Уроки"**: Shows available courses/lessons.
+-   **"🧪 Тесты"**: Starts the main test.
+-   **"🔐 Выйти"**: Logs you out and removes the keyboard.
+
+You can also use the following slash commands:
+-   `/logout`: Logs you out of the bot (and removes the keyboard).
+-   `/courses`: Lists available course levels. (Equivalent to "📘 Уроки" button)
 -   `/lesson <number>`: Retrieves and displays the theory and practice content for the specified lesson number.
     *   Example: `/lesson 1`
 -   `/test <test_id_or_lesson_number>`: Starts an interactive test. (Currently loads the main Junior Admin test).
