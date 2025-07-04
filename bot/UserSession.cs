@@ -39,6 +39,9 @@ namespace Omnieye.Bot.States
 
         public bool WaitingForNameInput { get; set; } = false; // Flag for /setname command
 
+        // Temporary storage for the list of tests shown to the user for selection
+        [JsonIgnore] // This should not be persisted in the main session JSON
+        public List<TestData>? LastShownTestList { get; set; } = null;
 
         [JsonConstructor]
         public UserSession(long userId)

@@ -94,6 +94,11 @@ When viewing lesson details, a "Назад" button will appear to return to the 
 When viewing test details, "Начать тест" and "Назад" buttons will appear. Pressing "Начать тест" will begin the selected test.
 
 **Taking a Test:**
+-   Tests are filtered based on your current user Level. As you answer more questions correctly and your Level increases, more challenging tests will become available.
+-   When viewing the list of tests ("🧪 Тесты" button), each test will be prefixed with an icon indicating its difficulty:
+    -   🟢 - Лёгкий (Easy)
+    -   🟡 - Средний (Medium)
+    -   🔴 - Сложный (Hard)
 -   Once a test starts, questions will be presented one by one.
 -   Each question will come with a custom keyboard showing the answer options as buttons.
 -   Press the button corresponding to your chosen answer.

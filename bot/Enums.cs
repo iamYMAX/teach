@@ -10,4 +10,11 @@ namespace Omnieye.Bot.States
         TakingTest,
         WaitingForNameInput // New state for setting name
     }
+
+    public enum TestDifficulty
+    {
+        Easy,
+        Medium,
+        Hard
+    }
 }

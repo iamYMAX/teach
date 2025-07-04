@@ -7,7 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 // using Omnieye.Bot.Models; // Effectively deprecated
 using Omnieye.Bot.Services;
-using Omnieye.Bot.States;
+using Omnieye.Bot.States; // Contains UserProfile, UserSession, TestHistoryEntry, UserCurrentState, TestDifficulty
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
@@ -33,7 +33,7 @@ namespace Omnieye.Bot
             "Урок 3: Продвинутые возможности"
         };
 
-        private static readonly List<string> availableTests = new List<string>
+        private static readonly List<string> availableTests = new List<string> // This list is now less relevant for listing, activeTestsData is primary
         {
             "Тест 1: Проверка знаний по основам",
             "Тест 2: Продвинутый тест"
@@ -46,9 +46,9 @@ namespace Omnieye.Bot
             { 3, "Урок 3: Продвинутые возможности\n\nДополнительные настройки и советы." }
         };
 
-        private static readonly Dictionary<int, string> testDetails = new Dictionary<int, string>
+        private static readonly Dictionary<int, string> testDetails = new Dictionary<int, string> // Used for /test <id> details before starting
         {
-            { 1, "Тест 1: Проверка знаний по основам\n\nВключает 10 вопросов по базовым темам." },
+            { 1, "Тест 1: Проверка знаний по основам\n\nВключает вопросы по базовым темам." },
             { 2, "Тест 2: Продвинутый тест\n\nСложные вопросы для опытных пользователей." }
         };
 
@@ -106,12 +106,14 @@ namespace Omnieye.Bot
             public int TestId { get; }
             public string TestName { get; }
             public List<QuestionData> Questions { get; }
+            public TestDifficulty Difficulty { get; }
 
-            public TestData(int testId, string testName, List<QuestionData> questions)
+            public TestData(int testId, string testName, List<QuestionData> questions, TestDifficulty difficulty = TestDifficulty.Easy)
             {
                 TestId = testId;
                 TestName = testName;
                 Questions = questions;
+                Difficulty = difficulty;
             }
         }
 
@@ -122,15 +124,22 @@ namespace Omnieye.Bot
                 {
                     new QuestionData("Вопрос 1: Что такое бот?", new List<string>{ "Программа", "Человек", "Животное" }, 0),
                     new QuestionData("Вопрос 2: Какой язык используется в этом боте?", new List<string>{ "C#", "Python", "JavaScript" }, 0)
-                })
+                }, TestDifficulty.Easy) // Difficulty added
             },
             {
                 2, new TestData(2, "Продвинутый тест", new List<QuestionData>
                 {
                     new QuestionData("Вопрос 1 (П): Что такое сеть?", new List<string>{ "Группа компьютеров", "Отдельный компьютер", "Принтер" }, 0),
                     new QuestionData("Вопрос 2 (П): IP-адрес это?", new List<string>{ "Физический адрес", "Логический адрес", "Почтовый адрес" }, 1)
-                })
+                }, TestDifficulty.Medium) // Difficulty added
             }
+            // Example of a Hard test for later use if needed:
+            // ,{
+            //     3, new TestData(3, "Экспертный тест по сетям", new List<QuestionData>
+            //     {
+            //         new QuestionData("Вопрос 1 (Э): Опишите модель OSI.", new List<string>{ "7 уровней", "4 уровня", "Не знаю" }, 0),
+            //     }, TestDifficulty.Hard)
+            // }
         };
 
         static async Task Main(string[] args)
@@ -187,18 +196,16 @@ namespace Omnieye.Bot
 
             Console.WriteLine($"Received '{messageText}' from User {userId} in Chat {chatId}. State: {session.CurrentState}, WaitingForName: {session.WaitingForNameInput}");
 
-            // 0. Handle WaitingForNameInput (highest priority after basic checks)
             if (session.WaitingForNameInput)
             {
-                if (messageText.StartsWith("/")) // If user types a command
+                if (messageText.StartsWith("/"))
                 {
-                    session.WaitingForNameInput = false; // Cancel name input
-                    session.CurrentState = UserCurrentState.MainMenu; // Revert state
+                    session.WaitingForNameInput = false;
+                    session.CurrentState = UserCurrentState.MainMenu;
                     await botClient.SendTextMessageAsync(chatId, "Ввод имени отменен.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
-                    // Do not return yet, let the command be processed by subsequent logic only if it's NOT /setname again
-                    if (messageText.ToLower() == "/setname") return; // If they typed /setname again, let it be handled by command switch
+                    if (messageText.ToLower() == "/setname") return;
                 }
-                else // Assumed to be the name
+                else
                 {
                     session.Profile.Name = messageText.Trim();
                     session.WaitingForNameInput = false;
@@ -216,7 +223,6 @@ namespace Omnieye.Bot
                 }
             }
 
-            // 1. Handle active test input
             if (session.CurrentState == UserCurrentState.TakingTest)
             {
                 if (!session.ActiveTestId.HasValue || !activeTestsData.TryGetValue(session.ActiveTestId.Value, out var currentTestData) ||
@@ -270,7 +276,6 @@ namespace Omnieye.Bot
                 return;
             }
 
-            // 2. Handle keyboard button presses if authenticated
             if (session.IsAuthenticated)
             {
                 bool keyboardButtonProcessed = true;
@@ -304,7 +309,6 @@ namespace Omnieye.Bot
                 if (keyboardButtonProcessed) return;
             }
 
-            // 3. Handle numeric selection if authenticated and in a list view
             if (session.IsAuthenticated && int.TryParse(messageText, out int selectionNumber) && selectionNumber > 0)
             {
                 bool selectionHandled = false;
@@ -315,13 +319,21 @@ namespace Omnieye.Bot
                 }
                 else if (session.CurrentState == UserCurrentState.ViewingTestList)
                 {
-                    await HandleTestDetailAsync(botClient, session, chatId, selectionNumber, cancellationToken);
+                    if (session.LastShownTestList != null && selectionNumber > 0 && selectionNumber <= session.LastShownTestList.Count)
+                    {
+                        TestData selectedTest = session.LastShownTestList[selectionNumber - 1]; // 0-indexed
+                        await HandleTestDetailAsync(botClient, session, chatId, selectedTest.TestId, cancellationToken);
+                    }
+                    else
+                    {
+                        await botClient.SendTextMessageAsync(chatId, "Неверный номер теста. Пожалуйста, выберите из списка.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
+                        // Optionally re-send the list: await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
+                    }
                     selectionHandled = true;
                 }
                 if (selectionHandled) return;
             }
 
-            // 4. Process standard slash commands
             var parts = messageText.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
             var command = parts[0].ToLower();
             var argument = parts.Length > 1 ? parts[1] : null;
@@ -359,6 +371,7 @@ namespace Omnieye.Bot
                         session.CurrentState = UserCurrentState.WaitingForNameInput;
                         break;
                     case "/profile": await HandleProfileAsync(botClient, session, chatId, cancellationToken); break;
+                    case "/history": await HandleHistoryAsync(botClient, session, chatId, cancellationToken); break;
                     default:
                         await botClient.SendTextMessageAsync(chatId, $"Unknown command '{command}'. Try /help for commands.", cancellationToken: cancellationToken);
                         break;
@@ -546,14 +559,36 @@ namespace Omnieye.Bot
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
             }
-            if (availableTests == null || !availableTests.Any()) {
-                await botClient.SendTextMessageAsync(chatId, "Извините, список тестов пока пуст.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+
+            var userLevel = session.Profile.Level;
+            List<TestData> testsToList;
+
+            if (userLevel < 3)
+                testsToList = activeTestsData.Values.Where(t => t.Difficulty == TestDifficulty.Easy).ToList();
+            else if (userLevel < 6)
+                testsToList = activeTestsData.Values.Where(t => t.Difficulty != TestDifficulty.Hard).ToList();
+            else
+                testsToList = activeTestsData.Values.ToList();
+
+            if (!testsToList.Any()) {
+                await botClient.SendTextMessageAsync(chatId, "Для вашего уровня пока нет доступных тестов или вы прошли все доступные.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.CurrentState = UserCurrentState.MainMenu; // No tests to list, go to main menu
                 return;
             }
-            var messageBuilder = new StringBuilder("Доступные тесты:\n");
-            for (int i = 0; i < availableTests.Count; i++) messageBuilder.AppendLine($"{i + 1}. {availableTests[i]}");
-            messageBuilder.AppendLine("\nОтправьте номер теста для просмотра информации и начала.");
-            await botClient.SendTextMessageAsync(chatId, messageBuilder.ToString(), replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+
+            // Store the filtered list in session for selection handling
+            session.LastShownTestList = testsToList;
+
+            var messageBuilder = new StringBuilder("Доступные тесты для вашего уровня:\n");
+            for (int i = 0; i < testsToList.Count; i++)
+            {
+                var test = testsToList[i];
+                var icon = GetDifficultyIcon(test.Difficulty);
+                messageBuilder.AppendLine($"{i + 1}. {icon} {test.TestName}");
+            }
+            messageBuilder.AppendLine("\nОтправьте номер теста для просмотра информации и возможного начала.");
+
+            await SendLongMessageAsync(botClient, chatId, messageBuilder.ToString(), ct, MainCommandKeyboard);
             session.CurrentState = UserCurrentState.ViewingTestList;
         }
 
@@ -725,6 +760,14 @@ namespace Omnieye.Bot
             string combined = string.Join("\n", messages);
             await SendLongMessageAsync(botClient, chatId, combined, cancellationToken, replyMarkup);
         }
+
+        public static string GetDifficultyIcon(TestDifficulty difficulty) => difficulty switch
+        {
+            TestDifficulty.Easy => "🟢",
+            TestDifficulty.Medium => "🟡",
+            TestDifficulty.Hard => "🔴",
+            _ => "⚪" // Default or unknown
+        };
 
         public static List<string> SplitMessage(string message, int chunkSize = 4000)
         {
