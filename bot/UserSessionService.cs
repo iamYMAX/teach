@@ -82,11 +82,11 @@ namespace Omnieye.Bot.Services
 
         // More methods will be added here to interact with UserSession properties like CurrentTestState
         // For example:
-        public void StartUserTest(long userId, Models.Test test)
-        {
-            var session = GetUserSession(userId);
-            session.StartTest(test);
-        }
+        // public void StartUserTest(long userId, Models.Test test) // OLD SYSTEM - DEPRECATED
+        // {
+        //     var session = GetUserSession(userId);
+        //     // session.StartTest(test); // UserSession no longer has StartTest(Models.Test test)
+        // }
 
         public void EndUserTest(long userId)
         {

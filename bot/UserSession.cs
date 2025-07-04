@@ -1,4 +1,3 @@
-using Omnieye.Bot.Models; // For UserTestState
 using Newtonsoft.Json;
 
 namespace Omnieye.Bot.States
@@ -12,7 +11,7 @@ namespace Omnieye.Bot.States
         public bool IsAuthenticated { get; set; } = false;
 
         // Null if no active test
-        public UserTestState? CurrentTestState { get; set; }
+        // public UserTestState? CurrentTestState { get; set; } // OLD SYSTEM - DEPRECATED
 
         public UserCurrentState CurrentState { get; set; } = UserCurrentState.MainMenu;
 

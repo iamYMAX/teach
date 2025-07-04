@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Omnieye.Bot.Models; // Assuming TestModels.cs (for old UserTestState) might still be referenced or needed for full context
+// using Omnieye.Bot.Models; // No longer needed if TestLoaderService and old Models.Test are fully deprecated
 using Omnieye.Bot.Services;
 using Omnieye.Bot.States;
 using Telegram.Bot;
@@ -19,7 +19,7 @@ namespace Omnieye.Bot
 {
     class Program
     {
-        private static TestLoaderService _testLoaderService = new TestLoaderService();
+        // private static TestLoaderService _testLoaderService = new TestLoaderService(); // OLD SYSTEM - DEPRECATED
         private static UserSessionService _userSessionService = new UserSessionService();
         private static MaterialLoader _materialLoader = new MaterialLoader();
 
