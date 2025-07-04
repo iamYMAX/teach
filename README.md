@@ -18,10 +18,14 @@ This project aims to create an educational platform consisting of:
     -   Tracks user's name, registration date, total tests taken, total correct answers, and calculates a level.
     -   Viewable via "👤 Профиль" button or `/profile` command.
     -   Name can be set using the `/setname` command.
--   **Course Material Access:**
-    -   `/lesson <number>`: Displays theory and practice materials for the specified lesson number of the Junior Admin course.
+-   **Lesson System:**
+    -   Lessons are categorized by difficulty (Beginner 🟢, Intermediate 🟡, Advanced 🔴) and become available based on your user Level.
+    -   Access lessons via the "📘 Уроки" button.
+    -   The list shows lesson titles with difficulty icons and summaries.
+    -   Type the exact lesson title from the list to view its full content.
+    -   A "Назад к списку уроков" button allows returning from the lesson content view.
 -   **Interactive Testing:**
-    -   `/test <number>`: Starts an interactive test session for the Junior Admin course. Users answer questions by pressing dynamically generated option buttons.
+    -   `/test <number>`: Starts an interactive test session. Users answer questions by pressing dynamically generated option buttons.
     -   `/stoptest`: Allows users to stop an ongoing test.
     -   Test results (score, date) are saved to the user's history.
 -   **Test History:**
@@ -87,11 +91,16 @@ After logging in, a command keyboard will appear with quick actions:
 -   **"📘 Уроки"**: Displays a list of available lessons. Send the number of a lesson to view its details.
 -   **"🧪 Тесты"**: Displays a list of available tests. Send the number of a test to view its details.
 -   **"История"**: Shows your test-taking history (requires prior test completions).
--   **"👤 Профиль"**: Displays your user profile, including name, level, test statistics, and registration date.
+-   **"👤 Профиль"**: Displays your user profile.
 -   **"🔐 Выйти"**: Logs you out and removes the keyboard.
 
-When viewing lesson details, a "Назад" button will appear to return to the lesson list.
-When viewing test details, "Начать тест" and "Назад" buttons will appear. Pressing "Начать тест" will begin the selected test.
+When viewing the lesson list (after pressing "📘 Уроки"):
+-   Lessons are shown with difficulty icons (🟢 Beginner, 🟡 Intermediate, 🔴 Advanced) and summaries.
+-   Type the exact title of a lesson to read its full content.
+When viewing a lesson's full content:
+-   A "Назад к списку уроков" button is available to return to the lesson list.
+When viewing test details (after selecting a test from the list via "🧪 Тесты"):
+-   "Начать тест" and "Назад" buttons will appear. Pressing "Начать тест" will begin the selected test.
 
 **Taking a Test:**
 -   Tests are filtered based on your current user Level. As you answer more questions correctly and your Level increases, more challenging tests will become available.

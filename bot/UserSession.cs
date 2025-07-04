@@ -44,6 +44,13 @@ namespace Omnieye.Bot.States
         [JsonIgnore] // This should not be persisted in the main session JSON
         public List<TestData>? LastShownTestList { get; set; } = null;
 
+        // Temporary storage for the titles of lessons shown to the user for selection by title
+        [JsonIgnore]
+        public List<string>? LastShownLessonTitles { get; set; } = null;
+
+        [JsonIgnore] // Not persisted as it's context for current view only
+        public string? ViewingLessonTitle { get; set; } = null;
+
         [JsonConstructor]
         public UserSession(long userId)
         {

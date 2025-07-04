@@ -5,10 +5,9 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-// using Omnieye.Bot.Models; // Effectively deprecated
+using Omnieye.Bot.CoreModels; // For TestData, QuestionData, Lesson
 using Omnieye.Bot.Services;
-using Omnieye.Bot.States; // Contains UserProfile, UserSession, TestHistoryEntry, UserCurrentState, TestDifficulty
-using Omnieye.Bot.CoreModels; // For TestData and QuestionData
+using Omnieye.Bot.States;     // For UserProfile, UserSession, TestHistoryEntry, UserCurrentState, TestDifficulty, LessonLevel
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
@@ -20,34 +19,30 @@ namespace Omnieye.Bot
 {
     class Program
     {
-        // private static TestLoaderService _testLoaderService = new TestLoaderService(); // OLD SYSTEM - DEPRECATED
         private static UserSessionService _userSessionService = new UserSessionService();
         private static MaterialLoader _materialLoader = new MaterialLoader();
 
         private static ITelegramBotClient? _botClient;
         private static CancellationTokenSource? _cts;
 
-        private static readonly List<string> availableLessons = new List<string>
+        // Old simple lists - effectively deprecated for listing, kept for potential direct /lesson <id> if not fully refactored
+        private static readonly List<string> availableLessons_OLD_FORMAT = new List<string>
         {
-            "Урок 1: Введение в систему",
-            "Урок 2: Основы работы",
-            "Урок 3: Продвинутые возможности"
+            "Урок 1: Введение в систему", "Урок 2: Основы работы", "Урок 3: Продвинутые возможности"
         };
-
-        private static readonly List<string> availableTests = new List<string> // This list is now less relevant for listing, activeTestsData is primary
-        {
-            "Тест 1: Проверка знаний по основам",
-            "Тест 2: Продвинутый тест"
-        };
-
-        private static readonly Dictionary<int, string> lessonDetails = new Dictionary<int, string>
+        private static readonly Dictionary<int, string> lessonDetails_OLD_FORMAT = new Dictionary<int, string>
         {
             { 1, "Урок 1: Введение в систему\n\nЗдесь рассказывается об основах работы с ботом и системой." },
             { 2, "Урок 2: Основы работы\n\nОписание основных функций и интерфейса." },
             { 3, "Урок 3: Продвинутые возможности\n\nДополнительные настройки и советы." }
         };
+         private static readonly List<string> availableTests_OLD_FORMAT = new List<string>
+        {
+            "Тест 1: Проверка знаний по основам", "Тест 2: Продвинутый тест"
+        };
 
-        private static readonly Dictionary<int, string> testDetails = new Dictionary<int, string> // Used for /test <id> details before starting
+
+        private static readonly Dictionary<int, string> testDetails = new Dictionary<int, string>
         {
             { 1, "Тест 1: Проверка знаний по основам\n\nВключает вопросы по базовым темам." },
             { 2, "Тест 2: Продвинутый тест\n\nСложные вопросы для опытных пользователей." }
@@ -63,9 +58,9 @@ namespace Omnieye.Bot
             ResizeKeyboard = true
         };
 
-        private static readonly ReplyKeyboardMarkup LessonDetailKeyboard = new ReplyKeyboardMarkup(new[]
+        private static readonly ReplyKeyboardMarkup LessonDetailKeyboard = new ReplyKeyboardMarkup(new[] // Keyboard for when viewing a lesson's full content
         {
-            new KeyboardButton[] { "Назад" }
+            new KeyboardButton[] { "Назад к списку уроков" }
         })
         {
             ResizeKeyboard = true
@@ -88,8 +83,6 @@ namespace Omnieye.Bot
             OneTimeKeyboard = true
         };
 
-        // Nested QuestionData and TestData class definitions removed. They are now in CoreModels/TestCoreModels.cs
-
         private static readonly Dictionary<int, TestData> activeTestsData = new Dictionary<int, TestData>
         {
             {
@@ -97,22 +90,23 @@ namespace Omnieye.Bot
                 {
                     new QuestionData("Вопрос 1: Что такое бот?", new List<string>{ "Программа", "Человек", "Животное" }, 0),
                     new QuestionData("Вопрос 2: Какой язык используется в этом боте?", new List<string>{ "C#", "Python", "JavaScript" }, 0)
-                }, TestDifficulty.Easy) // Difficulty added
+                }, TestDifficulty.Easy)
             },
             {
                 2, new TestData(2, "Продвинутый тест", new List<QuestionData>
                 {
                     new QuestionData("Вопрос 1 (П): Что такое сеть?", new List<string>{ "Группа компьютеров", "Отдельный компьютер", "Принтер" }, 0),
                     new QuestionData("Вопрос 2 (П): IP-адрес это?", new List<string>{ "Физический адрес", "Логический адрес", "Почтовый адрес" }, 1)
-                }, TestDifficulty.Medium) // Difficulty added
+                }, TestDifficulty.Medium)
             }
-            // Example of a Hard test for later use if needed:
-            // ,{
-            //     3, new TestData(3, "Экспертный тест по сетям", new List<QuestionData>
-            //     {
-            //         new QuestionData("Вопрос 1 (Э): Опишите модель OSI.", new List<string>{ "7 уровней", "4 уровня", "Не знаю" }, 0),
-            //     }, TestDifficulty.Hard)
-            // }
+        };
+
+        private static readonly List<Lesson> allLessonsData = new List<Lesson>
+        {
+            new Lesson("Основы IP-адресации", "Введение в IP, IPv4 и IPv6.", "IP-адрес — это уникальный идентификатор устройства в сети...\n\nIPv4 адреса состоят из 4 октетов и разделяются точками (например, 192.168.1.1). Они обеспечивают около 4 миллиардов уникальных адресов.\n\nIPv6 адреса намного длиннее, используют шестнадцатеричную систему и разделяются двоеточиями (например, 2001:0db8:85a3:0000:0000:8a2e:0370:7334). Они предоставляют практически неисчерпаемый пул адресов.", LessonLevel.Beginner),
+            new Lesson("Маршрутизация в сетях", "Принципы работы маршрутизаторов и таблиц маршрутизации.", "Маршрутизация - это процесс определения оптимального пути для передачи данных от источника к получателю через одну или несколько сетей. Маршрутизаторы используют таблицы маршрутизации для принятия этих решений.\n\nСтатическая маршрутизация настраивается вручную администратором.\nДинамическая маршрутизация использует протоколы (например, OSPF, BGP, RIP) для автоматического обмена информацией о маршрутах и обновления таблиц.", LessonLevel.Intermediate),
+            new Lesson("Ключевые Сетевые Протоколы", "Обзор TCP, UDP, HTTP, DNS и их функций.", "TCP (Transmission Control Protocol) - протокол с установлением соединения, гарантирующий доставку данных и их порядок.\nUDP (User Datagram Protocol) - протокол без установления соединения, быстрый, но не гарантирует доставку.\nHTTP/HTTPS (HyperText Transfer Protocol/Secure) - основа для передачи данных в WWW.\nDNS (Domain Name System) - преобразует доменные имена в IP-адреса.", LessonLevel.Beginner),
+            new Lesson("Виртуализация Сетей", "Основы SDN и NFV, их применение.", "SDN (Software-Defined Networking) отделяет управляющий уровень сети (control plane) от уровня передачи данных (data plane), позволяя централизованно управлять сетевыми устройствами.\nNFV (Network Functions Virtualization) виртуализирует сетевые функции, такие как брандмауэры, балансировщики нагрузки, позволяя им работать на стандартном оборудовании.", LessonLevel.Advanced)
         };
 
         static async Task Main(string[] args)
@@ -258,21 +252,23 @@ namespace Omnieye.Bot
                     case "🧪 Тесты": await HandleTestsListAsync(botClient, session, chatId, cancellationToken); break;
                     case "История": await HandleHistoryAsync(botClient, session, chatId, cancellationToken); break;
                     case "👤 Профиль": await HandleProfileAsync(botClient, session, chatId, cancellationToken); break;
-                    case "Назад":
-                        if (session.CurrentState == UserCurrentState.ViewingLessonDetail) await HandleLessonsListAsync(botClient, session, chatId, cancellationToken);
-                        else if (session.CurrentState == UserCurrentState.ViewingTestDetail) await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
-                        else
+                    case "Назад": // Generic "Назад" from TestDetailKeyboard
+                        if (session.CurrentState == UserCurrentState.ViewingTestDetail) await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
+                        else // Fallback if "Назад" is pressed from an unexpected state for this button
                         {
                             await botClient.SendTextMessageAsync(chatId, "Главное меню.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
                             session.CurrentState = UserCurrentState.MainMenu;
                         }
                         break;
+                    case "Назад к списку уроков": // Specific for lesson content view
+                         await HandleLessonsListAsync(botClient, session, chatId, cancellationToken);
+                         break;
                     case "Начать тест":
                         if (session.CurrentState == UserCurrentState.ViewingTestDetail && session.ViewingItemId.HasValue) await StartActualTestAsync(botClient, session, chatId, session.ViewingItemId.Value, cancellationToken);
                         else if (session.CurrentState == UserCurrentState.ViewingTestDetail && !session.ViewingItemId.HasValue) await botClient.SendTextMessageAsync(chatId, "Ошибка: не удалось определить, какой тест запустить.", replyMarkup: TestDetailKeyboard, cancellationToken: cancellationToken);
                         else await botClient.SendTextMessageAsync(chatId, "Пожалуйста, сначала выберите тест из списка.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
                         break;
-                    case "Вернуться в меню":
+                    case "Вернуться в меню": // After test completion
                         await HandleStartCommandAsync(botClient, session, chatId, cancellationToken);
                         session.CurrentState = UserCurrentState.MainMenu;
                         break;
@@ -282,29 +278,50 @@ namespace Omnieye.Bot
                 if (keyboardButtonProcessed) return;
             }
 
-            if (session.IsAuthenticated && int.TryParse(messageText, out int selectionNumber) && selectionNumber > 0)
+            if (session.IsAuthenticated)
             {
-                bool selectionHandled = false;
-                if (session.CurrentState == UserCurrentState.ViewingLessonList)
+                bool inputHandled = false;
+                if (int.TryParse(messageText, out int selectionNumber) && selectionNumber > 0)
                 {
-                    await HandleLessonDetailAsync(botClient, session, chatId, selectionNumber, cancellationToken);
-                    selectionHandled = true;
+                     if (session.CurrentState == UserCurrentState.ViewingLessonList)
+                    {
+                        if (selectionNumber > 0 && selectionNumber <= allLessonsData.Count)
+                        {
+                             await HandleLessonContentAsync(botClient, session, chatId, allLessonsData[selectionNumber-1], cancellationToken);
+                             inputHandled = true;
+                        } else {
+                            await botClient.SendTextMessageAsync(chatId, "Неверный номер урока.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
+                            inputHandled = true; // Still handled as an attempt to select
+                        }
+                    }
+                    else if (session.CurrentState == UserCurrentState.ViewingTestList)
+                    {
+                        if (session.LastShownTestList != null && selectionNumber <= session.LastShownTestList.Count)
+                        {
+                            TestData selectedTest = session.LastShownTestList[selectionNumber - 1];
+                            await HandleTestDetailAsync(botClient, session, chatId, selectedTest.TestId, cancellationToken);
+                        }
+                        else
+                        {
+                            await botClient.SendTextMessageAsync(chatId, "Неверный номер теста. Пожалуйста, выберите из списка.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
+                        }
+                        inputHandled = true;
+                    }
                 }
-                else if (session.CurrentState == UserCurrentState.ViewingTestList)
+                else
                 {
-                    if (session.LastShownTestList != null && selectionNumber > 0 && selectionNumber <= session.LastShownTestList.Count)
+                    if (session.CurrentState == UserCurrentState.ViewingLessonList && session.LastShownLessonTitles != null &&
+                        session.LastShownLessonTitles.Any(title => title.Equals(messageText.Trim(), StringComparison.OrdinalIgnoreCase)))
                     {
-                        TestData selectedTest = session.LastShownTestList[selectionNumber - 1]; // 0-indexed
-                        await HandleTestDetailAsync(botClient, session, chatId, selectedTest.TestId, cancellationToken);
+                        var lessonToView = allLessonsData.FirstOrDefault(l => l.Title.Equals(messageText.Trim(), StringComparison.OrdinalIgnoreCase));
+                        if (lessonToView != null)
+                        {
+                            await HandleLessonContentAsync(botClient, session, chatId, lessonToView, cancellationToken);
+                            inputHandled = true;
+                        }
                     }
-                    else
-                    {
-                        await botClient.SendTextMessageAsync(chatId, "Неверный номер теста. Пожалуйста, выберите из списка.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
-                        // Optionally re-send the list: await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
-                    }
-                    selectionHandled = true;
                 }
-                if (selectionHandled) return;
+                if (inputHandled) return;
             }
 
             var parts = messageText.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
@@ -486,7 +503,16 @@ namespace Omnieye.Bot
                 session.CurrentState = UserCurrentState.MainMenu;
                 return;
             }
-            await HandleLessonDetailAsync(botClient, session, chatId, lessonNumber, ct);
+            // This now directly calls HandleLessonContentAsync if lessonNumber is valid index for allLessonsData
+            if (lessonNumber > 0 && lessonNumber <= allLessonsData.Count)
+            {
+                await HandleLessonContentAsync(botClient, session, chatId, allLessonsData[lessonNumber - 1], ct);
+            }
+            else
+            {
+                 await botClient.SendTextMessageAsync(chatId, "Извините, урок с таким номером не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                 session.CurrentState = UserCurrentState.ViewingLessonList; // Or MainMenu
+            }
         }
 
         static async Task HandleTestCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? argument, CancellationToken ct)
@@ -505,6 +531,32 @@ namespace Omnieye.Bot
             await StartActualTestAsync(botClient, session, chatId, testIdToStart, ct);
         }
 
+        static List<Lesson> GetAvailableLessonsForUserLevel(int userProfileLevel, IEnumerable<Lesson> allLessons)
+        {
+            if (userProfileLevel < 3)
+                return allLessons.Where(l => l.Level == LessonLevel.Beginner).ToList();
+            else if (userProfileLevel < 6)
+                return allLessons.Where(l => l.Level == LessonLevel.Beginner || l.Level == LessonLevel.Intermediate).ToList();
+            else
+                return allLessons.ToList();
+        }
+
+        static string GetLessonDifficultyIcon(LessonLevel level) => level switch
+        {
+            LessonLevel.Beginner => "🟢",
+            LessonLevel.Intermediate => "🟡",
+            LessonLevel.Advanced => "🔴",
+            _ => "⚪"
+        };
+
+        static string GetDifficultyIcon(TestDifficulty difficulty) => difficulty switch // Renamed from GetTestDifficultyIcon for consistency
+        {
+            TestDifficulty.Easy => "🟢",
+            TestDifficulty.Medium => "🟡",
+            TestDifficulty.Hard => "🔴",
+            _ => "⚪"
+        };
+
         static async Task HandleLessonsListAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
         {
             if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
@@ -513,15 +565,48 @@ namespace Omnieye.Bot
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
             }
-            if (availableLessons == null || !availableLessons.Any()) {
-                await botClient.SendTextMessageAsync(chatId, "Извините, список уроков пока пуст.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+
+            var lessonsToShow = GetAvailableLessonsForUserLevel(session.Profile.Level, allLessonsData);
+
+            if (!lessonsToShow.Any()) {
+                await botClient.SendTextMessageAsync(chatId, "Для вашего уровня пока нет доступных уроков.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.CurrentState = UserCurrentState.MainMenu;
+                session.LastShownLessonTitles = null;
                 return;
             }
-            var messageBuilder = new StringBuilder("Доступные уроки:\n");
-            for (int i = 0; i < availableLessons.Count; i++) messageBuilder.AppendLine($"{i + 1}. {availableLessons[i]}");
-            messageBuilder.AppendLine("\nОтправьте номер урока для просмотра деталей.");
-            await botClient.SendTextMessageAsync(chatId, messageBuilder.ToString(), replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+
+            session.LastShownLessonTitles = lessonsToShow.Select(l => l.Title).ToList();
+
+            var messageBuilder = new StringBuilder("Доступные уроки для вашего уровня:\n\n");
+            foreach (var lesson in lessonsToShow)
+            {
+                var icon = GetLessonDifficultyIcon(lesson.Level);
+                messageBuilder.AppendLine($"{icon} *{lesson.Title}*");
+                messageBuilder.AppendLine($"_{lesson.Summary}_");
+                messageBuilder.AppendLine();
+            }
+            messageBuilder.AppendLine("👉 Напиши точное название урока из списка, чтобы открыть его.");
+
+            await SendLongMessageAsync(botClient, chatId, messageBuilder.ToString(), ct, MainCommandKeyboard, parseMode: ParseMode.Markdown);
             session.CurrentState = UserCurrentState.ViewingLessonList;
+        }
+
+        static async Task HandleLessonContentAsync(ITelegramBotClient botClient, UserSession session, long chatId, Lesson lessonToShow, CancellationToken ct)
+        {
+            if (lessonToShow == null)
+            {
+                await botClient.SendTextMessageAsync(chatId, "Ошибка: Урок не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                await HandleLessonsListAsync(botClient, session, chatId, ct);
+                return;
+            }
+
+            var icon = GetLessonDifficultyIcon(lessonToShow.Level);
+            string header = $"{icon} *{lessonToShow.Title}*\n\n";
+
+            await SendLongMessageAsync(botClient, chatId, header + lessonToShow.Content, ct, LessonDetailKeyboard, parseMode: ParseMode.Markdown);
+            session.CurrentState = UserCurrentState.ViewingLessonDetail;
+            session.ViewingItemId = null;
+            session.ViewingLessonTitle = lessonToShow.Title;
         }
 
         static async Task HandleTestsListAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
@@ -545,11 +630,10 @@ namespace Omnieye.Bot
 
             if (!testsToList.Any()) {
                 await botClient.SendTextMessageAsync(chatId, "Для вашего уровня пока нет доступных тестов или вы прошли все доступные.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
-                session.CurrentState = UserCurrentState.MainMenu; // No tests to list, go to main menu
+                session.CurrentState = UserCurrentState.MainMenu;
                 return;
             }
 
-            // Store the filtered list in session for selection handling
             session.LastShownTestList = testsToList;
 
             var messageBuilder = new StringBuilder("Доступные тесты для вашего уровня:\n");
@@ -559,7 +643,7 @@ namespace Omnieye.Bot
                 var icon = GetDifficultyIcon(test.Difficulty);
                 messageBuilder.AppendLine($"{i + 1}. {icon} {test.TestName}");
             }
-            messageBuilder.AppendLine("\nОтправьте номер теста для просмотра информации и возможного начала.");
+            messageBuilder.AppendLine("\nОтправьте номер теста для просмотра информации и начала.");
 
             await SendLongMessageAsync(botClient, chatId, messageBuilder.ToString(), ct, MainCommandKeyboard);
             session.CurrentState = UserCurrentState.ViewingTestList;
@@ -567,11 +651,10 @@ namespace Omnieye.Bot
 
         static async Task HandleLessonDetailAsync(ITelegramBotClient botClient, UserSession session, long chatId, int lessonNumber, CancellationToken ct)
         {
-            if (lessonDetails.TryGetValue(lessonNumber, out string? detailText))
+            if (lessonNumber > 0 && lessonNumber <= allLessonsData.Count)
             {
-                await SendLongMessageAsync(botClient, chatId, detailText, ct, LessonDetailKeyboard);
-                session.CurrentState = UserCurrentState.ViewingLessonDetail;
-                session.ViewingItemId = lessonNumber;
+                var lessonToView = allLessonsData[lessonNumber - 1];
+                await HandleLessonContentAsync(botClient, session, chatId, lessonToView, ct);
             }
             else
             {
@@ -580,17 +663,22 @@ namespace Omnieye.Bot
             }
         }
 
-        static async Task HandleTestDetailAsync(ITelegramBotClient botClient, UserSession session, long chatId, int testNumber, CancellationToken ct)
+        static async Task HandleTestDetailAsync(ITelegramBotClient botClient, UserSession session, long chatId, int testId, CancellationToken ct)
         {
-            if (testDetails.TryGetValue(testNumber, out string? detailText))
+            if (activeTestsData.TryGetValue(testId, out var testData))
             {
-                await SendLongMessageAsync(botClient, chatId, detailText, ct, TestDetailKeyboard);
+                // Use testDetails dictionary for the summary if available, otherwise, just test name.
+                string description = testDetails.TryGetValue(testId, out var desc) ? desc : testData.TestName;
+                var icon = GetDifficultyIcon(testData.Difficulty);
+                string fullDetailText = $"{icon} *{testData.TestName}*\n{description}"; // Use testData.TestName for title consistency
+
+                await SendLongMessageAsync(botClient, chatId, fullDetailText, ct, TestDetailKeyboard, parseMode: ParseMode.Markdown);
                 session.CurrentState = UserCurrentState.ViewingTestDetail;
-                session.ViewingItemId = testNumber;
+                session.ViewingItemId = testId;
             }
             else
             {
-                await botClient.SendTextMessageAsync(chatId, "Извините, тест с таким номером не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                await botClient.SendTextMessageAsync(chatId, "Извините, тест с таким номером не найден или для него нет описания.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
                 session.CurrentState = UserCurrentState.ViewingTestList;
             }
         }
@@ -716,31 +804,31 @@ namespace Omnieye.Bot
             session.CurrentState = UserCurrentState.MainMenu;
         }
 
-        static async Task SendLongMessageAsync(ITelegramBotClient botClient, long chatId, string message, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null, int chunkSize = 4000)
+        static async Task SendLongMessageAsync(ITelegramBotClient botClient, long chatId, string message, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null, ParseMode parseMode = ParseMode.Default, int chunkSize = 4000)
         {
             if (string.IsNullOrEmpty(message)) return;
             var chunks = SplitMessage(message, chunkSize);
             for (int i = 0; i < chunks.Count; i++)
             {
                 bool isLastChunk = i == chunks.Count - 1;
-                await botClient.SendTextMessageAsync(chatId, chunks[i], replyMarkup: isLastChunk ? replyMarkup : null, cancellationToken: cancellationToken);
+                // Apply ParseMode to all chunks if it's not Default, otherwise only to the last if markup is also present (or to all if no markup)
+                ParseMode currentChunkParseMode = (parseMode != ParseMode.Default) ? parseMode : (isLastChunk && replyMarkup != null ? parseMode : ParseMode.Default);
+                if (parseMode != ParseMode.Default && isLastChunk && replyMarkup == null) currentChunkParseMode = parseMode;
+
+
+                await botClient.SendTextMessageAsync(chatId, chunks[i],
+                    replyMarkup: isLastChunk ? replyMarkup : null,
+                    cancellationToken: cancellationToken,
+                    parseMode: currentChunkParseMode);
                 if (!isLastChunk) await Task.Delay(200, cancellationToken);
             }
         }
 
-        static async Task SendCombinedMessages(ITelegramBotClient botClient, long chatId, List<string> messages, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null)
+        static async Task SendCombinedMessages(ITelegramBotClient botClient, long chatId, List<string> messages, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null, ParseMode parseMode = ParseMode.Default)
         {
             string combined = string.Join("\n", messages);
-            await SendLongMessageAsync(botClient, chatId, combined, cancellationToken, replyMarkup);
+            await SendLongMessageAsync(botClient, chatId, combined, cancellationToken, replyMarkup, parseMode: parseMode);
         }
-
-        public static string GetDifficultyIcon(TestDifficulty difficulty) => difficulty switch
-        {
-            TestDifficulty.Easy => "🟢",
-            TestDifficulty.Medium => "🟡",
-            TestDifficulty.Hard => "🔴",
-            _ => "⚪" // Default or unknown
-        };
 
         public static List<string> SplitMessage(string message, int chunkSize = 4000)
         {
