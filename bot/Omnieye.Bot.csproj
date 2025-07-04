@@ -8,8 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Placeholder for Telegram.Bot package, will add later -->
-    <!-- <PackageReference Include="Telegram.Bot" Version="LATEST_VERSION" /> -->
+    <PackageReference Include="Telegram.Bot" Version="19.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
 </Project>
