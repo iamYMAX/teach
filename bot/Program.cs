@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-// using Omnieye.Bot.Models; // No longer needed if TestLoaderService and old Models.Test are fully deprecated
+// using Omnieye.Bot.Models; // Effectively deprecated
 using Omnieye.Bot.Services;
 using Omnieye.Bot.States;
 using Telegram.Bot;
@@ -48,7 +48,7 @@ namespace Omnieye.Bot
 
         private static readonly Dictionary<int, string> testDetails = new Dictionary<int, string>
         {
-            { 1, "Тест 1: Проверка знаний по основам\n\nВключает 10 вопросов по базовым темам." }, // Note: question count is descriptive
+            { 1, "Тест 1: Проверка знаний по основам\n\nВключает 10 вопросов по базовым темам." },
             { 2, "Тест 2: Продвинутый тест\n\nСложные вопросы для опытных пользователей." }
         };
 
@@ -86,8 +86,6 @@ namespace Omnieye.Bot
             OneTimeKeyboard = true
         };
 
-
-        // --- Test Data Structures (In-Program definition) ---
         public class QuestionData
         {
             public string Text { get; }
@@ -133,7 +131,6 @@ namespace Omnieye.Bot
                 })
             }
         };
-        // --- End Test Data Structures ---
 
         static async Task Main(string[] args)
         {
@@ -189,21 +186,20 @@ namespace Omnieye.Bot
 
             Console.WriteLine($"Received '{messageText}' from User {userId} in Chat {chatId}. State: {session.CurrentState}");
 
-            // 1. Handle active test input (highest priority)
             if (session.CurrentState == UserCurrentState.TakingTest)
             {
                 if (!session.ActiveTestId.HasValue || !activeTestsData.TryGetValue(session.ActiveTestId.Value, out var currentTestData) ||
                     session.CurrentQuestionIndex >= currentTestData.Questions.Count)
                 {
                     await botClient.SendTextMessageAsync(chatId, "Произошла ошибка с текущим тестом. Возвращаемся в главное меню.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
-                    session.EndCurrentTest(); // Resets test vars and sets state to MainMenu
+                    session.EndCurrentTest();
                     return;
                 }
 
                 QuestionData currentQuestion = currentTestData.Questions[session.CurrentQuestionIndex];
                 int selectedOptionIdx = currentQuestion.Options.IndexOf(messageText);
 
-                if (selectedOptionIdx != -1) // Answer matches an option
+                if (selectedOptionIdx != -1)
                 {
                     if (selectedOptionIdx == currentQuestion.CorrectOptionIndex) session.CurrentTestScore++;
                     session.CurrentQuestionIndex++;
@@ -212,11 +208,11 @@ namespace Omnieye.Bot
                     {
                         await DisplayCurrentTestQuestionAsync(botClient, session, chatId, cancellationToken);
                     }
-                    else // Test finished
+                    else
                     {
                         string resultMessage = $"Тест \"{currentTestData.TestName}\" завершён.\nВаш результат: {session.CurrentTestScore} из {currentTestData.Questions.Count}.";
                         await botClient.SendTextMessageAsync(chatId, resultMessage, replyMarkup: AfterTestMenuKeyboard, cancellationToken: cancellationToken);
-                        session.EndCurrentTest(); // Resets test vars and sets state to MainMenu
+                        session.EndCurrentTest();
                     }
                 }
                 else if (messageText.ToLower() == "/stoptest")
@@ -231,7 +227,6 @@ namespace Omnieye.Bot
                 return;
             }
 
-            // 2. Handle keyboard button presses if authenticated
             if (session.IsAuthenticated)
             {
                 bool keyboardButtonProcessed = true;
@@ -242,7 +237,7 @@ namespace Omnieye.Bot
                     case "Назад":
                         if (session.CurrentState == UserCurrentState.ViewingLessonDetail) await HandleLessonsListAsync(botClient, session, chatId, cancellationToken);
                         else if (session.CurrentState == UserCurrentState.ViewingTestDetail) await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
-                        else // Fallback "Назад" if state is unexpected (e.g. MainMenu but "Назад" somehow pressed)
+                        else
                         {
                             await botClient.SendTextMessageAsync(chatId, "Главное меню.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
                             session.CurrentState = UserCurrentState.MainMenu;
@@ -253,9 +248,9 @@ namespace Omnieye.Bot
                         else if (session.CurrentState == UserCurrentState.ViewingTestDetail && !session.ViewingItemId.HasValue) await botClient.SendTextMessageAsync(chatId, "Ошибка: не удалось определить, какой тест запустить.", replyMarkup: TestDetailKeyboard, cancellationToken: cancellationToken);
                         else await botClient.SendTextMessageAsync(chatId, "Пожалуйста, сначала выберите тест из списка.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
                         break;
-                    case "Вернуться в меню": // After test completion
-                        await HandleStartCommandAsync(botClient, session, chatId, cancellationToken); // This will show main menu and keyboard
-                        session.CurrentState = UserCurrentState.MainMenu; // Ensure state
+                    case "Вернуться в меню":
+                        await HandleStartCommandAsync(botClient, session, chatId, cancellationToken);
+                        session.CurrentState = UserCurrentState.MainMenu;
                         break;
                     case "🔐 Выйти": await HandleLogoutCommandAsync(botClient, session, chatId, cancellationToken); break;
                     default: keyboardButtonProcessed = false; break;
@@ -263,7 +258,6 @@ namespace Omnieye.Bot
                 if (keyboardButtonProcessed) return;
             }
 
-            // 3. Handle numeric selection if authenticated and in a list view
             if (session.IsAuthenticated && int.TryParse(messageText, out int selectionNumber) && selectionNumber > 0)
             {
                 bool selectionHandled = false;
@@ -280,7 +274,6 @@ namespace Omnieye.Bot
                 if (selectionHandled) return;
             }
 
-            // 4. Process standard slash commands
             var parts = messageText.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
             var command = parts[0].ToLower();
             var argument = parts.Length > 1 ? parts[1] : null;
@@ -361,8 +354,8 @@ namespace Omnieye.Bot
                  await botClient.SendTextMessageAsync(chatId, "You are not currently authenticated.", cancellationToken: ct);
                 return;
             }
-            AuthorizationService.Logout(session.UserId, _userSessionService); // Clears auth and current test state via service
-            session.CurrentState = UserCurrentState.MainMenu; // Ensure nav state is reset
+            AuthorizationService.Logout(session.UserId, _userSessionService);
+            session.CurrentState = UserCurrentState.MainMenu;
             await botClient.SendTextMessageAsync(chatId, "You have been logged out.", replyMarkup: new ReplyKeyboardRemove(), cancellationToken: ct);
         }
 
@@ -379,7 +372,7 @@ namespace Omnieye.Bot
             else if (session.IsAuthenticated)
             {
                 await SendCombinedMessages(botClient, chatId, messages, ct, MainCommandKeyboard);
-                session.CurrentState = UserCurrentState.MainMenu; // Ensure state
+                session.CurrentState = UserCurrentState.MainMenu;
             }
             else
             {
@@ -397,14 +390,13 @@ namespace Omnieye.Bot
                 messages.Add("Вы находитесь в процессе теста.");
                 messages.Add("Выберите вариант ответа кнопкой или введите /stoptest для остановки теста.");
                 messages.Add("/stoptest - Stop the current test.");
-                // Keep current question keyboard
             }
             else if (!session.IsAuthenticated)
             {
                 messages.Add("/login <password> - Authenticate to access the bot");
                 messages.Add("/start - Welcome message");
             }
-            else // Authenticated & not TakingTest
+            else
             {
                 messages.Add("/logout - Log out from the bot");
                 messages.Add("/courses - List available courses (or use '📘 Уроки' button)");
@@ -439,7 +431,7 @@ namespace Omnieye.Bot
             }
             if (string.IsNullOrWhiteSpace(argument) || !int.TryParse(argument, out int lessonNumber) || lessonNumber <= 0) {
                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, укажите номер урока. Например: /lesson 1", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
-                session.CurrentState = UserCurrentState.MainMenu; // Or ViewingLessonList if they were there
+                session.CurrentState = UserCurrentState.MainMenu;
                 return;
             }
             await HandleLessonDetailAsync(botClient, session, chatId, lessonNumber, ct);
@@ -581,18 +573,18 @@ namespace Omnieye.Bot
             if (session.ActiveTestId.HasValue && session.CurrentState == UserCurrentState.TakingTest)
             {
                 var testName = activeTestsData.TryGetValue(session.ActiveTestId.Value, out var testData) ? testData.TestName : "текущий";
-                session.EndCurrentTest(); // Resets test variables and sets state to MainMenu
+                session.EndCurrentTest();
                 await botClient.SendTextMessageAsync(chatId, $"Тест \"{testName}\" остановлен. Ваш прогресс не сохранен.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
                 testWasStopped = true;
             }
-            // Fallback for old test system state - can be removed if CurrentTestState is fully deprecated
-            else if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive)
-            {
-                _userSessionService.EndUserTest(session.UserId);
-                session.CurrentState = UserCurrentState.MainMenu;
-                await botClient.SendTextMessageAsync(chatId, "Тест (старая система) остановлен. Ваш прогресс не сохранен.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
-                testWasStopped = true;
-            }
+            // Fallback for old test system state - This block should be removed as CurrentTestState is deprecated
+            // else if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive)
+            // {
+            //      _userSessionService.EndUserTest(session.UserId);
+            //     session.CurrentState = UserCurrentState.MainMenu;
+            //     await botClient.SendTextMessageAsync(chatId, "Тест (старая система) остановлен. Ваш прогресс не сохранен.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+            //     testWasStopped = true;
+            // }
             if (!testWasStopped)
             {
                 await botClient.SendTextMessageAsync(chatId, "Нет активного теста для остановки.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
@@ -654,9 +646,8 @@ namespace Omnieye.Bot
         public static void Logout(long userId, UserSessionService sessionService)
         {
             sessionService.UpdateUserAuthentication(userId, false);
-            var session = sessionService.GetUserSession(userId); // Get session to call EndCurrentTest
-            session.EndCurrentTest(); // Ensure new test state is cleared
-            // sessionService.EndUserTest(userId); // This was the old call, ensure it's correctly updated or EndCurrentTest is sufficient
+            var session = sessionService.GetUserSession(userId);
+            session.EndCurrentTest();
             Console.WriteLine($"Bot Response: User {userId} has been logged out.");
         }
     }
