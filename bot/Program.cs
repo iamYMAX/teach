@@ -377,18 +377,18 @@ namespace Omnieye.Bot
                 await SendCombinedMessages(botClient, chatId, messages, ct);
                 await DisplayCurrentQuestionAsync(botClient, session, chatId, ct);
             }
-            else
+            else // Not in an active test
             {
-                await SendCombinedMessages(botClient, chatId, messages, ct);
-            }
-            // If authenticated and not in a test, ensure MainCommandKeyboard is shown
-            else if (session.IsAuthenticated)
-            {
-                 await botClient.SendTextMessageAsync(chatId, string.Join("\n", messages), replyMarkup: MainCommandKeyboard, cancellationToken: ct);
-            }
-            else // Not authenticated
-            {
-                 await botClient.SendTextMessageAsync(chatId, string.Join("\n", messages), cancellationToken: ct);
+                // The messages list already contains the base welcome and login prompt if applicable.
+                // Now decide which keyboard to send.
+                if (session.IsAuthenticated)
+                {
+                    await SendCombinedMessages(botClient, chatId, messages, ct, MainCommandKeyboard);
+                }
+                else // Not authenticated and not in a test
+                {
+                    await SendCombinedMessages(botClient, chatId, messages, ct);
+                }
             }
         }
 
@@ -643,10 +643,10 @@ namespace Omnieye.Bot
         }
 
         // Helper to combine multiple short messages into one if possible, or send separately
-        static async Task SendCombinedMessages(ITelegramBotClient botClient, long chatId, System.Collections.Generic.List<string> messages, CancellationToken cancellationToken)
+        static async Task SendCombinedMessages(ITelegramBotClient botClient, long chatId, System.Collections.Generic.List<string> messages, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null)
         {
             string combined = string.Join("\n", messages);
-            await SendLongMessageAsync(botClient, chatId, combined, cancellationToken);
+            await SendLongMessageAsync(botClient, chatId, combined, cancellationToken, replyMarkup);
         }
 
 
