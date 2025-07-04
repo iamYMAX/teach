@@ -27,8 +27,8 @@ namespace Omnieye.Bot
             Console.WriteLine("Omnieye Telegram Bot starting...");
 
             // IMPORTANT: Replace with your actual bot token from BotFather
-            var botToken = Environment.GetEnvironmentVariable("OMNIEYE_BOT_TOKEN") ?? "7266317536:AAG-5KzhaNK5Q_SYrl-XHo5MyXJGpiAzXck";
-            if (botToken == "7266317536:AAG-5KzhaNK5Q_SYrl-XHo5MyXJGpiAzXck")
+            var botToken = Environment.GetEnvironmentVariable("OMNIEYE_BOT_TOKEN") ?? "YOUR_BOT_TOKEN_HERE";
+            if (botToken == "YOUR_BOT_TOKEN_HERE")
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine("CRITICAL: Bot token is not set. Please set the OMNIEYE_BOT_TOKEN environment variable or replace the placeholder in code.");
