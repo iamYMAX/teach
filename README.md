@@ -76,8 +76,8 @@ The bot understands the following commands. Some commands are only available aft
 *(Requires successful `/login`)*
 
 After logging in, a command keyboard will appear with quick actions:
--   **"📘 Уроки"**: Shows available courses/lessons.
--   **"🧪 Тесты"**: Starts the main test.
+-   **"📘 Уроки"**: Displays a list of available lessons for the Junior Admin course.
+-   **"🧪 Тесты"**: Displays a list of available tests for the Junior Admin course.
 -   **"🔐 Выйти"**: Logs you out and removes the keyboard.
 
 You can also use the following slash commands:

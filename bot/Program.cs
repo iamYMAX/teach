@@ -23,6 +23,19 @@ namespace Omnieye.Bot
         private static ITelegramBotClient? _botClient;
         private static CancellationTokenSource? _cts;
 
+        private static readonly List<string> availableLessons = new List<string>
+        {
+            "Урок 1: Введение в систему",
+            "Урок 2: Основы работы",
+            "Урок 3: Продвинутые возможности"
+        };
+
+        private static readonly List<string> availableTests = new List<string>
+        {
+            "Тест 1: Проверка знаний по основам",
+            "Тест 2: Продвинутый тест"
+        };
+
         private static readonly ReplyKeyboardMarkup MainCommandKeyboard = new ReplyKeyboardMarkup(new[]
         {
             new[] { new KeyboardButton("📘 Уроки"), new KeyboardButton("🧪 Тесты") },
@@ -116,14 +129,10 @@ namespace Omnieye.Bot
                 switch (messageText)
                 {
                     case "📘 Уроки":
-                        // Placeholder: Will call HandleCoursesCommandAsync or a new HandleLessonsListAsync
-                        // For now, using HandleCoursesCommandAsync as it lists "Junior Admin"
-                        await HandleCoursesCommandAsync(botClient, session, chatId, cancellationToken);
+                        await HandleLessonsListAsync(botClient, session, chatId, cancellationToken);
                         break;
                     case "🧪 Тесты":
-                        // Placeholder: Will call HandleTestCommandAsync or a new HandleTestsListAsync
-                        // For now, sending a placeholder message or starting the default test
-                        await HandleTestCommandAsync(botClient, session, chatId, null, cancellationToken); // Passing null as argument for default test
+                        await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
                         break;
                     case "🔐 Выйти":
                         await HandleLogoutCommandAsync(botClient, session, chatId, cancellationToken);
@@ -133,6 +142,44 @@ namespace Omnieye.Bot
                         break;
                 }
                 if (keyboardButtonProcessed) return; // If it was a keyboard button, we're done with this update
+            }
+
+            // Placeholder for selecting lesson/test by number after viewing lists
+            // This is a simplified approach. A more robust solution might involve tracking user state (e.g., "justViewedLessonsList").
+            if (session.IsAuthenticated && int.TryParse(messageText, out int selectionNumber) && selectionNumber > 0)
+            {
+                // For simplicity, we don't know if they just saw lessons or tests.
+                // We'll check both lists. This could be ambiguous if lists overlap in size.
+                string? selectedItemName = null;
+                bool isLesson = false;
+
+                if (selectionNumber <= availableLessons.Count)
+                {
+                    selectedItemName = availableLessons[selectionNumber - 1]; // 0-indexed
+                    isLesson = true;
+                }
+                // If not found in lessons, or to give tests priority if numbers are ambiguous and they just saw tests (though we don't track that context here yet)
+                // A simple check: if it could be a test, assume it might be.
+                // This part is very basic and would need refinement for real use.
+                // For now, if it's a valid lesson index, we'll prefer that.
+                // If not a lesson, then check if it's a test.
+                if (selectedItemName == null && selectionNumber <= availableTests.Count)
+                {
+                     selectedItemName = availableTests[selectionNumber - 1]; // 0-indexed
+                     isLesson = false; // It's a test
+                }
+
+
+                if (selectedItemName != null)
+                {
+                    await botClient.SendTextMessageAsync(
+                        chatId,
+                        $"Вы выбрали \"{selectedItemName}\". Функция будет реализована позже.",
+                        replyMarkup: MainCommandKeyboard,
+                        cancellationToken: cancellationToken);
+                    return; // Processed as a selection
+                }
+                // If it's a number but not a valid selection from either list, it will fall through to command processing.
             }
 
             var parts = messageText.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
@@ -411,6 +458,56 @@ namespace Omnieye.Bot
             } else {
                 await botClient.SendTextMessageAsync(chatId, "No active test to stop.", cancellationToken: ct);
             }
+        }
+
+        static async Task HandleLessonsListAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive)
+            {
+                await botClient.SendTextMessageAsync(chatId, "Please finish or stop the current test (/stoptest) before viewing lessons.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                await DisplayCurrentQuestionAsync(botClient, session, chatId, ct);
+                return;
+            }
+
+            if (availableLessons == null || !availableLessons.Any())
+            {
+                await botClient.SendTextMessageAsync(chatId, "Извините, список уроков пока пуст.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                return;
+            }
+
+            var messageBuilder = new System.Text.StringBuilder("Доступные уроки:\n");
+            for (int i = 0; i < availableLessons.Count; i++)
+            {
+                messageBuilder.AppendLine($"{i + 1}. {availableLessons[i]}");
+            }
+            messageBuilder.AppendLine("\nВыберите урок, чтобы получить подробную информацию (функционал в следующем шаге).");
+
+            await botClient.SendTextMessageAsync(chatId, messageBuilder.ToString(), replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+        }
+
+        static async Task HandleTestsListAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive)
+            {
+                await botClient.SendTextMessageAsync(chatId, "Please finish or stop the current test (/stoptest) before viewing the tests list.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                await DisplayCurrentQuestionAsync(botClient, session, chatId, ct);
+                return;
+            }
+
+            if (availableTests == null || !availableTests.Any())
+            {
+                await botClient.SendTextMessageAsync(chatId, "Извините, список тестов пока пуст.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                return;
+            }
+
+            var messageBuilder = new System.Text.StringBuilder("Доступные тесты:\n");
+            for (int i = 0; i < availableTests.Count; i++)
+            {
+                messageBuilder.AppendLine($"{i + 1}. {availableTests[i]}");
+            }
+            messageBuilder.AppendLine("\nВыберите тест для начала (реализация запуска тестов — позже).");
+
+            await botClient.SendTextMessageAsync(chatId, messageBuilder.ToString(), replyMarkup: MainCommandKeyboard, cancellationToken: ct);
         }
 
         // Helper to send potentially long messages by splitting them
