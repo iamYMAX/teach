@@ -81,16 +81,22 @@ After logging in, a command keyboard will appear with quick actions:
 -   **"🔐 Выйти"**: Logs you out and removes the keyboard.
 
 When viewing lesson details, a "Назад" button will appear to return to the lesson list.
-When viewing test details, "Начать тест" (placeholder for now) and "Назад" buttons will appear.
+When viewing test details, "Начать тест" and "Назад" buttons will appear. Pressing "Начать тест" will begin the selected test.
+
+**Taking a Test:**
+-   Once a test starts, questions will be presented one by one.
+-   Each question will come with a custom keyboard showing the answer options as buttons.
+-   Press the button corresponding to your chosen answer.
+-   After answering all questions, your score will be displayed, and a "Вернуться в меню" button will appear.
+-   You can type `/stoptest` at any time during a test to cancel it (progress will not be saved).
 
 You can also use the following slash commands:
--   `/logout`: Logs you out of the bot (and removes the keyboard).
+-   `/logout`: Logs you out of the bot (and removes the keyboard). This will also stop any active test.
 -   `/courses`: Lists available course levels. (Equivalent to "📘 Уроки" button action)
 -   `/lesson <number>`: Manually retrieves and displays the theory and practice content for the specified lesson number (note: this is the old way, primarily for direct access if needed. The keyboard flow is preferred).
     *   Example: `/lesson 1`
--   `/test <test_id_or_lesson_number>`: Manually starts an interactive test (note: this is the old way, primarily for direct access if needed. The keyboard flow is preferred for viewing details first).
+-   `/test <test_id_or_lesson_number>`: Manually starts an interactive test (note: this is the old way. The keyboard flow via "🧪 Тесты" -> select test -> "Начать тест" is preferred).
     *   Example: `/test 1`
-    *   During a test, simply send the number corresponding to your chosen answer.
 -   `/stoptest`: If you are in an active test, this command will stop it. Your progress for that test attempt will not be saved.
 
 ## Project Structure Overview

@@ -7,6 +7,6 @@ namespace Omnieye.Bot.States
         ViewingLessonDetail,
         ViewingTestList,
         ViewingTestDetail,
-        // Could add TakingTest here later
+        TakingTest
     }
 }

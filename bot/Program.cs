@@ -74,6 +74,55 @@ namespace Omnieye.Bot
             ResizeKeyboard = true
         };
 
+        // --- Test Data Structures ---
+        public class QuestionData
+        {
+            public string Text { get; }
+            public List<string> Options { get; }
+            public int CorrectOptionIndex { get; }
+
+            public QuestionData(string text, List<string> options, int correctOptionIndex)
+            {
+                Text = text;
+                Options = options;
+                CorrectOptionIndex = correctOptionIndex;
+            }
+        }
+
+        public class TestData
+        {
+            public int TestId { get; }
+            public string TestName { get; } // Added for potential use in messages
+            public List<QuestionData> Questions { get; }
+
+            public TestData(int testId, string testName, List<QuestionData> questions)
+            {
+                TestId = testId;
+                TestName = testName;
+                Questions = questions;
+            }
+        }
+
+        private static readonly Dictionary<int, TestData> activeTestsData = new Dictionary<int, TestData>
+        {
+            {
+                1, new TestData(1, "Тест по основам", new List<QuestionData>
+                {
+                    new QuestionData("Вопрос 1: Что такое бот?", new List<string>{ "Программа", "Человек", "Животное" }, 0),
+                    new QuestionData("Вопрос 2: Какой язык используется в этом боте?", new List<string>{ "C#", "Python", "JavaScript" }, 0)
+                })
+            },
+            {
+                2, new TestData(2, "Продвинутый тест", new List<QuestionData>
+                {
+                    new QuestionData("Вопрос 1 (П): Что такое сеть?", new List<string>{ "Группа компьютеров", "Отдельный компьютер", "Принтер" }, 0),
+                    new QuestionData("Вопрос 2 (П): IP-адрес это?", new List<string>{ "Физический адрес", "Логический адрес", "Почтовый адрес" }, 1)
+                })
+            }
+        };
+        // --- End Test Data Structures ---
+
+
         static async Task Main(string[] args)
         {
             Console.WriteLine("Omnieye Telegram Bot starting...");
@@ -139,17 +188,88 @@ namespace Omnieye.Bot
             var session = _userSessionService.GetUserSession(userId);
 
             // If a test is active, treat input as an answer first
-            if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive)
+            if (session.CurrentState == UserCurrentState.TakingTest)
+            {
+                // Make sure ActiveTestId and current question are valid
+                if (!session.ActiveTestId.HasValue || !activeTestsData.TryGetValue(session.ActiveTestId.Value, out var currentTestData) ||
+                    session.CurrentQuestionIndex >= currentTestData.Questions.Count)
+                {
+                    // Invalid state, perhaps test ended abruptly or data error
+                    await botClient.SendTextMessageAsync(chatId, "Произошла ошибка с текущим тестом. Возвращаемся в главное меню.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
+                    session.EndCurrentTest(); // Reset all test parameters
+                    session.CurrentState = UserCurrentState.MainMenu;
+                    return;
+                }
+
+                QuestionData currentQuestion = currentTestData.Questions[session.CurrentQuestionIndex];
+                int selectedOptionIdx = currentQuestion.Options.IndexOf(messageText);
+
+                if (selectedOptionIdx != -1) // User's message matches one of the options
+                {
+                    if (selectedOptionIdx == currentQuestion.CorrectOptionIndex)
+                    {
+                        session.CurrentTestScore++;
+                    }
+                    session.CurrentQuestionIndex++;
+
+                    if (session.CurrentQuestionIndex < currentTestData.Questions.Count)
+                    {
+                        await DisplayCurrentTestQuestionAsync(botClient, session, chatId, cancellationToken);
+                    }
+                    else // Test finished
+                    {
+                        string resultMessage = $"Тест \"{currentTestData.TestName}\" завершён.\nВаш результат: {session.CurrentTestScore} из {currentTestData.Questions.Count}.";
+
+                        // As per task: "Предлагать кнопку "Вернуться в меню" после окончания теста"
+                        // This implies the MainCommandKeyboard might be better if "Вернуться в меню" is not a button itself,
+                        // or we create a specific one. Let's use MainCommandKeyboard for now.
+                        var menuKeyboard = new ReplyKeyboardMarkup(new[] { new KeyboardButton("Вернуться в меню") })
+                        {
+                            ResizeKeyboard = true,
+                            OneTimeKeyboard = true
+                        };
+
+                        await botClient.SendTextMessageAsync(chatId, resultMessage, replyMarkup: menuKeyboard, cancellationToken: cancellationToken);
+
+                        // session.EndCurrentTest(); // Reset test-specific fields
+                        // session.CurrentState = UserCurrentState.MainMenu; // Set state after test. EndCurrentTest already sets it to MainMenu.
+                        // Let's ensure EndCurrentTest is called and handles state properly.
+                        // The task implies "Вернуться в меню" button handles the state transition.
+                        // For now, just reset test fields. The next input ("Вернуться в меню") will handle state.
+                        // Or, we can assume after results, they are implicitly in a post-test state awaiting "Вернуться в меню"
+                        session.ActiveTestId = null; // Keep score and index for review if needed, but mark test as inactive
+                                                     // The next "Вернуться в меню" will fully reset via EndCurrentTest or by setting MainMenu state.
+                                                     // For simplicity, let's reset fully here and set to MainMenu.
+                                                     // The button "Вернуться в меню" would then just be a trigger to show the main menu message.
+                        session.EndCurrentTest(); // This will set state to MainMenu and clear test vars.
+
+                    }
+                }
+                else if (messageText.ToLower() == "/stoptest") // Allow /stoptest during test
+                {
+                    await HandleStopTestCommandAsync(botClient, session, chatId, cancellationToken);
+                }
+                else
+                {
+                    // Input does not match any option, re-send the question or send an error
+                    await botClient.SendTextMessageAsync(chatId, "Пожалуйста, выберите один из предложенных вариантов.", cancellationToken: cancellationToken);
+                    // Re-display the current question with its keyboard
+                    await DisplayCurrentTestQuestionAsync(botClient, session, chatId, cancellationToken);
+                }
+                return; // Input processed (or re-prompted) within test context
+            }
+            // Check for OLD test system state (UserTestState from Models/JSON) - this should be phased out
+            else if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive)
             {
                 if (int.TryParse(messageText, out int answerOpt) && answerOpt > 0 &&
-                    session.CurrentTestState.GetCurrentQuestion() != null && // Ensure question is loaded
+                    session.CurrentTestState.GetCurrentQuestion() != null &&
                     answerOpt <= session.CurrentTestState.GetCurrentQuestion().Options.Count)
                 {
                     await HandleAnswerInputAsync(botClient, userId, chatId, answerOpt - 1, cancellationToken);
                     return;
                 }
-                // If not a valid answer, it might be /stoptest or /help during a test, or a keyboard button press
             }
+
 
             // Handle keyboard button presses first if user is authenticated
             if (session.IsAuthenticated)
@@ -188,17 +308,13 @@ namespace Omnieye.Bot
                         }
                         break;
                     case "Начать тест": // "Start Test" button
-                        if (session.CurrentState == UserCurrentState.ViewingTestDetail)
+                        if (session.CurrentState == UserCurrentState.ViewingTestDetail && session.ViewingItemId.HasValue)
                         {
-                            // Placeholder message as per requirements
-                            await botClient.SendTextMessageAsync(
-                                chatId,
-                                "Функция запуска теста будет реализована позже.",
-                                replyMarkup: TestDetailKeyboard, // Keep TestDetailKeyboard visible
-                                cancellationToken: cancellationToken);
-                            // In a real scenario, you might call a method here to start the actual test:
-                            // await StartActualTestAsync(botClient, session, chatId, session.ViewingItemId.Value, cancellationToken);
-                            // And that method would then set the state to UserCurrentState.TakingTest and display the first question.
+                            await StartActualTestAsync(botClient, session, chatId, session.ViewingItemId.Value, cancellationToken);
+                        }
+                        else if (session.CurrentState == UserCurrentState.ViewingTestDetail && !session.ViewingItemId.HasValue)
+                        {
+                             await botClient.SendTextMessageAsync(chatId, "Ошибка: не удалось определить, какой тест запустить. Пожалуйста, вернитесь к списку тестов.", replyMarkup: TestDetailKeyboard, cancellationToken: cancellationToken);
                         }
                         else
                         {
@@ -206,6 +322,15 @@ namespace Omnieye.Bot
                             await botClient.SendTextMessageAsync(chatId, "Пожалуйста, сначала выберите тест из списка.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
                             // Optionally, call HandleTestsListAsync if you want to redirect them
                         }
+                        break;
+                    case "Вернуться в меню": // New button after test completion
+                        // Ensure this is handled when the user is in a post-test state or a generic state
+                        // HandleStartCommandAsync will show the main menu and appropriate keyboard
+                        // UserSession.EndCurrentTest() already sets state to MainMenu.
+                        // So, pressing this button when state is MainMenu should just re-trigger the /start message.
+                        await HandleStartCommandAsync(botClient, session, chatId, cancellationToken);
+                        // Ensure state is MainMenu if it wasn't already set by EndCurrentTest or if called from other contexts.
+                        session.CurrentState = UserCurrentState.MainMenu;
                         break;
                     case "🔐 Выйти":
                         await HandleLogoutCommandAsync(botClient, session, chatId, cancellationToken);
@@ -521,32 +646,119 @@ namespace Omnieye.Bot
             }
         }
 
-        static async Task DisplayCurrentQuestionAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
-        {
-            if (session.CurrentTestState == null || !session.CurrentTestState.IsTestActive) return;
+        // This was for the OLD test system (UserTestState from Models/JSON)
+        // static async Task DisplayCurrentQuestionAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        // {
+        //     if (session.CurrentTestState == null || !session.CurrentTestState.IsTestActive) return;
 
-            TestQuestion question = session.CurrentTestState.GetCurrentQuestion();
-            if (question == null) { // Should not happen if IsTestActive is true
-                 await botClient.SendTextMessageAsync(chatId, "Error: Could not load the current question.", cancellationToken: ct);
-                _userSessionService.EndUserTest(session.UserId); // End test to prevent loop
+        //     TestQuestion question = session.CurrentTestState.GetCurrentQuestion();
+        //     if (question == null) { // Should not happen if IsTestActive is true
+        //          await botClient.SendTextMessageAsync(chatId, "Error: Could not load the current question.", cancellationToken: ct);
+        //         _userSessionService.EndUserTest(session.UserId); // End test to prevent loop
+        //         return;
+        //     }
+        //     var questionText = $"Question {session.CurrentTestState.CurrentQuestionIndex + 1} of {session.CurrentTestState.CurrentTest.Questions.Count}:\n{question.QuestionText}\n\n";
+        //     for (int i = 0; i < question.Options.Count; i++) {
+        //         questionText += $"{i + 1}. {question.Options[i]}\n";
+        //     }
+        //     questionText += "\nYour answer (enter the number):";
+        //     await botClient.SendTextMessageAsync(chatId, questionText, cancellationToken: ct);
+        // }
+
+
+        // New method for the new TestData structure
+        static async Task DisplayCurrentTestQuestionAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            if (!session.ActiveTestId.HasValue || !activeTestsData.TryGetValue(session.ActiveTestId.Value, out var currentTestData))
+            {
+                await botClient.SendTextMessageAsync(chatId, "Ошибка: Тест не найден или не активен.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.EndCurrentTest(); // Reset test state
+                session.CurrentState = UserCurrentState.MainMenu;
                 return;
             }
-            var questionText = $"Question {session.CurrentTestState.CurrentQuestionIndex + 1} of {session.CurrentTestState.CurrentTest.Questions.Count}:\n{question.QuestionText}\n\n";
-            for (int i = 0; i < question.Options.Count; i++) {
-                questionText += $"{i + 1}. {question.Options[i]}\n";
+
+            if (session.CurrentQuestionIndex >= currentTestData.Questions.Count)
+            {
+                // This case should ideally be handled by the answer processing logic before calling display.
+                // However, as a safeguard:
+                await botClient.SendTextMessageAsync(chatId, "Кажется, все вопросы закончились, но тест не был завершен корректно.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.EndCurrentTest();
+                session.CurrentState = UserCurrentState.MainMenu;
+                return;
             }
-            questionText += "\nYour answer (enter the number):";
-            await botClient.SendTextMessageAsync(chatId, questionText, cancellationToken: ct);
+
+            QuestionData question = currentTestData.Questions[session.CurrentQuestionIndex];
+
+            var keyboardButtons = question.Options.Select(option => new KeyboardButton(option)).ToArray();
+            var replyKeyboardMarkup = new ReplyKeyboardMarkup(
+                // Dynamically create rows for options, e.g., 2 options per row or 1 per row
+                // For simplicity here, let's do one button per row for up to N buttons, then group.
+                // A more sophisticated layout might be needed for many options.
+                // For now, let's make each option its own row for clarity.
+                keyboardButtons.Select(kb => new[] { kb })
+            )
+            {
+                ResizeKeyboard = true,
+                OneTimeKeyboard = true // Good for question-answer flow
+            };
+
+            string questionMessage = $"Вопрос {session.CurrentQuestionIndex + 1} из {currentTestData.Questions.Count}:\n\n{question.Text}";
+
+            await botClient.SendTextMessageAsync(chatId, questionMessage, replyMarkup: replyKeyboardMarkup, cancellationToken: ct);
         }
+
 
         static async Task HandleStopTestCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
         {
-            if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive) {
-                _userSessionService.EndUserTest(session.UserId);
-                await botClient.SendTextMessageAsync(chatId, "Test stopped. Your progress for this test was not saved.", cancellationToken: ct);
-            } else {
-                await botClient.SendTextMessageAsync(chatId, "No active test to stop.", cancellationToken: ct);
+            bool testWasStopped = false;
+            if (session.ActiveTestId.HasValue && session.CurrentState == UserCurrentState.TakingTest)
+            {
+                var testName = activeTestsData.TryGetValue(session.ActiveTestId.Value, out var testData) ? testData.TestName : "текущий";
+                session.EndCurrentTest(); // Clears new test state properties and sets state to MainMenu
+                await botClient.SendTextMessageAsync(chatId, $"Тест \"{testName}\" остановлен. Ваш прогресс не сохранен.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                testWasStopped = true;
             }
+            // Fallback for old test system state, if any, though it should be phased out.
+            // This else-if might be removed if CurrentTestState is fully deprecated for active tests.
+            else if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive)
+            {
+                 _userSessionService.EndUserTest(session.UserId); // Ensure this is the method intended for the old system state.
+                                                                // UserSession.EndUserTest might need review if it was also for the old system.
+                                                                // For now, assuming it clears the old UserTestState.
+                session.CurrentState = UserCurrentState.MainMenu; // Ensure state is reset
+                await botClient.SendTextMessageAsync(chatId, "Тест (старая система) остановлен. Ваш прогресс не сохранен.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                testWasStopped = true;
+            }
+
+            if (!testWasStopped)
+            {
+                await botClient.SendTextMessageAsync(chatId, "Нет активного теста для остановки.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+            }
+        }
+
+        static async Task StartActualTestAsync(ITelegramBotClient botClient, UserSession session, long chatId, int testId, CancellationToken ct)
+        {
+            if (!activeTestsData.TryGetValue(testId, out var testToStart))
+            {
+                await botClient.SendTextMessageAsync(chatId, "Ошибка: Выбранный тест не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.CurrentState = UserCurrentState.ViewingTestList; // Go back to test list context
+                // Consider calling HandleTestsListAsync(botClient, session, chatId, ct); to re-display list
+                return;
+            }
+
+            if (testToStart.Questions == null || !testToStart.Questions.Any())
+            {
+                await botClient.SendTextMessageAsync(chatId, $"Ошибка: В тесте \"{testToStart.TestName}\" нет вопросов.", replyMarkup: TestDetailKeyboard, cancellationToken: ct);
+                // Keep them on TestDetailKeyboard or send to TestList? For now, TestDetail.
+                session.CurrentState = UserCurrentState.ViewingTestDetail;
+                return;
+            }
+
+            session.StartNewTest(testId); // Sets ActiveTestId, resets score/index, sets state to TakingTest
+
+            // Send a confirmation message without a keyboard, as DisplayCurrentTestQuestionAsync will send the question keyboard.
+            await botClient.SendTextMessageAsync(chatId, $"Начинаем тест: \"{testToStart.TestName}\"", cancellationToken: ct, replyMarkup: new ReplyKeyboardRemove());
+            await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
         }
 
         static async Task HandleLessonsListAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)

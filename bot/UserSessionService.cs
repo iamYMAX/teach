@@ -91,7 +91,8 @@ namespace Omnieye.Bot.Services
         public void EndUserTest(long userId)
         {
             var session = GetUserSession(userId);
-            session.EndTest();
+            // session.EndTest(); // This was for the old test system state.
+            session.EndCurrentTest(); // This is for the new test system state.
         }
     }
 }
