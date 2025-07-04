@@ -78,6 +78,7 @@ The bot understands the following commands. Some commands are only available aft
 After logging in, a command keyboard will appear with quick actions:
 -   **"📘 Уроки"**: Displays a list of available lessons. Send the number of a lesson to view its details.
 -   **"🧪 Тесты"**: Displays a list of available tests. Send the number of a test to view its details.
+-   **"История"**: Shows your test-taking history (requires prior test completions).
 -   **"🔐 Выйти"**: Logs you out and removes the keyboard.
 
 When viewing lesson details, a "Назад" button will appear to return to the lesson list.
@@ -98,6 +99,7 @@ You can also use the following slash commands:
 -   `/test <test_id_or_lesson_number>`: Manually starts an interactive test (note: this is the old way. The keyboard flow via "🧪 Тесты" -> select test -> "Начать тест" is preferred).
     *   Example: `/test 1`
 -   `/stoptest`: If you are in an active test, this command will stop it. Your progress for that test attempt will not be saved.
+-   `/history`: Displays your test-taking history, showing completed tests, scores, and dates. (Equivalent to "История" button)
 
 ## Project Structure Overview
 

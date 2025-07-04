@@ -55,7 +55,7 @@ namespace Omnieye.Bot
         private static readonly ReplyKeyboardMarkup MainCommandKeyboard = new ReplyKeyboardMarkup(new[]
         {
             new[] { new KeyboardButton("📘 Уроки"), new KeyboardButton("🧪 Тесты") },
-            new[] { new KeyboardButton("🔐 Выйти") }
+            new[] { new KeyboardButton("История"), new KeyboardButton("🔐 Выйти") } // Replaced "📊 История" with "История" for simplicity
         })
         {
             ResizeKeyboard = true
@@ -208,8 +208,23 @@ namespace Omnieye.Bot
                     {
                         await DisplayCurrentTestQuestionAsync(botClient, session, chatId, cancellationToken);
                     }
-                    else
+                    else // Test finished
                     {
+                        // Save to history BEFORE resetting test state in session
+                        if (session.ActiveTestId.HasValue)
+                        {
+                            var historyEntry = new TestHistoryEntry
+                            {
+                                TestId = session.ActiveTestId.Value,
+                                TestTitle = currentTestData.TestName,
+                                PassedAt = DateTime.UtcNow,
+                                TotalQuestions = currentTestData.Questions.Count,
+                                CorrectAnswers = session.CurrentTestScore
+                            };
+                            session.TestHistory.Add(historyEntry);
+                            Console.WriteLine($"Saved test history for user {userId}, test {historyEntry.TestTitle}");
+                        }
+
                         string resultMessage = $"Тест \"{currentTestData.TestName}\" завершён.\nВаш результат: {session.CurrentTestScore} из {currentTestData.Questions.Count}.";
                         await botClient.SendTextMessageAsync(chatId, resultMessage, replyMarkup: AfterTestMenuKeyboard, cancellationToken: cancellationToken);
                         session.EndCurrentTest();
@@ -251,6 +266,9 @@ namespace Omnieye.Bot
                     case "Вернуться в меню":
                         await HandleStartCommandAsync(botClient, session, chatId, cancellationToken);
                         session.CurrentState = UserCurrentState.MainMenu;
+                        break;
+                    case "История": // Handle "История" button
+                        await HandleHistoryAsync(botClient, session, chatId, cancellationToken);
                         break;
                     case "🔐 Выйти": await HandleLogoutCommandAsync(botClient, session, chatId, cancellationToken); break;
                     default: keyboardButtonProcessed = false; break;
@@ -296,6 +314,9 @@ namespace Omnieye.Bot
                     case "/lesson": await HandleLessonCommandAsync(botClient, session, chatId, argument, cancellationToken); break;
                     case "/test": await HandleTestCommandAsync(botClient, session, chatId, argument, cancellationToken); break;
                     case "/stoptest": await HandleStopTestCommandAsync(botClient, session, chatId, cancellationToken); break;
+                    case "/history": // Handle /history command
+                        await HandleHistoryAsync(botClient, session, chatId, cancellationToken);
+                        break;
                     default:
                         await botClient.SendTextMessageAsync(chatId, $"Unknown command '{command}'. Try /help for commands.", cancellationToken: cancellationToken);
                         break;
@@ -577,14 +598,6 @@ namespace Omnieye.Bot
                 await botClient.SendTextMessageAsync(chatId, $"Тест \"{testName}\" остановлен. Ваш прогресс не сохранен.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
                 testWasStopped = true;
             }
-            // Fallback for old test system state - This block should be removed as CurrentTestState is deprecated
-            // else if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive)
-            // {
-            //      _userSessionService.EndUserTest(session.UserId);
-            //     session.CurrentState = UserCurrentState.MainMenu;
-            //     await botClient.SendTextMessageAsync(chatId, "Тест (старая система) остановлен. Ваш прогресс не сохранен.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
-            //     testWasStopped = true;
-            // }
             if (!testWasStopped)
             {
                 await botClient.SendTextMessageAsync(chatId, "Нет активного теста для остановки.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
@@ -607,6 +620,31 @@ namespace Omnieye.Bot
         {
             string combined = string.Join("\n", messages);
             await SendLongMessageAsync(botClient, chatId, combined, cancellationToken, replyMarkup);
+        }
+
+        static async Task HandleHistoryAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать историю.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct); // Re-display current question
+                return;
+            }
+
+            if (session.TestHistory == null || !session.TestHistory.Any())
+            {
+                await botClient.SendTextMessageAsync(chatId, "Вы ещё не проходили тесты.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+            }
+            else
+            {
+                var historyTextBuilder = new StringBuilder("🕓 История тестов:\n");
+                historyTextBuilder.Append(
+                    string.Join("\n", session.TestHistory.Select((entry, i) =>
+                        $"{i + 1}. 📘 {entry.TestTitle}: {entry.CorrectAnswers}/{entry.TotalQuestions} — {entry.PassedAt:g}"))
+                );
+                await SendLongMessageAsync(botClient, chatId, historyTextBuilder.ToString(), ct, MainCommandKeyboard);
+            }
+            session.CurrentState = UserCurrentState.MainMenu; // Viewing history returns to main menu context
         }
 
         public static List<string> SplitMessage(string message, int chunkSize = 4000)

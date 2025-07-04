@@ -1,7 +1,18 @@
 using Newtonsoft.Json;
+using System; // For DateTime
+using System.Collections.Generic; // For List
 
 namespace Omnieye.Bot.States
 {
+    public class TestHistoryEntry
+    {
+        public int TestId { get; set; }
+        public string TestTitle { get; set; } = string.Empty;
+        public DateTime PassedAt { get; set; }
+        public int TotalQuestions { get; set; }
+        public int CorrectAnswers { get; set; }
+    }
+
     // UserCurrentState enum will be in Enums.cs or directly here if preferred
     // For this operation, assuming Enums.cs is created and namespace Omnieye.Bot.States is used.
 
@@ -22,6 +33,8 @@ namespace Omnieye.Bot.States
         public int? ActiveTestId { get; set; } = null;
         public int CurrentQuestionIndex { get; set; } = 0; // Index for the question being currently displayed/answered
         public int CurrentTestScore { get; set; } = 0;
+
+        public List<TestHistoryEntry> TestHistory { get; set; } = new List<TestHistoryEntry>();
 
 
         [JsonConstructor]
