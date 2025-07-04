@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 // using Omnieye.Bot.Models; // Effectively deprecated
 using Omnieye.Bot.Services;
 using Omnieye.Bot.States; // Contains UserProfile, UserSession, TestHistoryEntry, UserCurrentState, TestDifficulty
+using Omnieye.Bot.CoreModels; // For TestData and QuestionData
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
@@ -87,35 +88,7 @@ namespace Omnieye.Bot
             OneTimeKeyboard = true
         };
 
-        public class QuestionData
-        {
-            public string Text { get; }
-            public List<string> Options { get; }
-            public int CorrectOptionIndex { get; }
-
-            public QuestionData(string text, List<string> options, int correctOptionIndex)
-            {
-                Text = text;
-                Options = options;
-                CorrectOptionIndex = correctOptionIndex;
-            }
-        }
-
-        public class TestData
-        {
-            public int TestId { get; }
-            public string TestName { get; }
-            public List<QuestionData> Questions { get; }
-            public TestDifficulty Difficulty { get; }
-
-            public TestData(int testId, string testName, List<QuestionData> questions, TestDifficulty difficulty = TestDifficulty.Easy)
-            {
-                TestId = testId;
-                TestName = testName;
-                Questions = questions;
-                Difficulty = difficulty;
-            }
-        }
+        // Nested QuestionData and TestData class definitions removed. They are now in CoreModels/TestCoreModels.cs
 
         private static readonly Dictionary<int, TestData> activeTestsData = new Dictionary<int, TestData>
         {
