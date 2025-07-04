@@ -1,5 +1,4 @@
 using System;
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Omnieye.Bot.Models;
@@ -933,4 +932,389 @@ namespace Omnieye.Bot
     {
         // TODO: Main bot logic, command parsing, calling other services
     }
+
+    // --- Static Helper Methods & Command Handlers from Program class ---
+    // (Re-adding them here, ensuring they are within Program class scope)
+
+        static async Task HandleLoginCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? password, CancellationToken ct)
+        {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем пытаться войти.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+                return;
+            }
+            if (session.IsAuthenticated) {
+                await botClient.SendTextMessageAsync(chatId, "You are already authenticated.", cancellationToken: ct);
+                return;
+            }
+
+            string? trimmedPassword = password?.Trim();
+
+            if (string.IsNullOrWhiteSpace(trimmedPassword)) {
+                await botClient.SendTextMessageAsync(chatId, "Please provide a password. Usage: /login <password>", cancellationToken: ct);
+                return;
+            }
+            if (AuthorizationService.Authenticate(session.UserId, trimmedPassword, _userSessionService)) {
+                await botClient.SendTextMessageAsync(
+                    chatId,
+                    "Вы успешно авторизованы.\nВыберите действие:",
+                    replyMarkup: MainCommandKeyboard,
+                    cancellationToken: ct);
+            } else {
+                await botClient.SendTextMessageAsync(chatId, "Authentication failed. Invalid password.", cancellationToken: ct);
+            }
+        }
+
+        static async Task HandleLogoutCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)  {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем выходить из системы.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+                return;
+            }
+            if (!session.IsAuthenticated) {
+                 await botClient.SendTextMessageAsync(chatId, "You are not currently authenticated.", cancellationToken: ct);
+                return;
+            }
+            AuthorizationService.Logout(session.UserId, _userSessionService);
+            session.CurrentState = UserCurrentState.MainMenu;
+
+            await botClient.SendTextMessageAsync(
+                chatId,
+                "You have been logged out.",
+                replyMarkup: new ReplyKeyboardRemove(),
+                cancellationToken: ct);
+        }
+
+        static async Task HandleStartCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            var messages = new System.Collections.Generic.List<string>
+            {
+                "Welcome to Omnieye Certification Bot! Use /courses to see available courses, or /help for more commands."
+            };
+            if (!session.IsAuthenticated)
+            {
+                messages.Add("Please use /login <password> to access content.");
+            }
+
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            {
+                await botClient.SendTextMessageAsync(chatId, "Вы находитесь в процессе теста. Введите ответ или /stoptest для остановки.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+            }
+            else
+            {
+                if (session.IsAuthenticated)
+                {
+                    await SendCombinedMessages(botClient, chatId, messages, ct, MainCommandKeyboard);
+                }
+                else
+                {
+                    await SendCombinedMessages(botClient, chatId, messages, ct);
+                }
+            }
+        }
+
+        static async Task HandleHelpCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            var messages = new System.Collections.Generic.List<string>();
+            messages.Add("Available commands:");
+
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            {
+                messages.Add("Вы находитесь в процессе теста.");
+                messages.Add("Выберите вариант ответа кнопкой или введите /stoptest для остановки теста.");
+                messages.Add("/stoptest - Stop the current test.");
+            }
+            else if (!session.IsAuthenticated)
+            {
+                messages.Add("/login <password> - Authenticate to access the bot");
+                messages.Add("/start - Welcome message");
+            }
+            else
+            {
+                messages.Add("/logout - Log out from the bot");
+                messages.Add("/courses - List available courses"); // Equivalent to "📘 Уроки"
+                messages.Add("/lesson <number> - Get lesson content");
+                messages.Add("/test <lesson_number_or_id> - Start a test for a lesson/topic");
+                messages.Add("/stoptest - If you are in a test, this will stop it.");
+                messages.Add("/start - Welcome message");
+            }
+            messages.Add("/help - Show this help message");
+            await SendCombinedMessages(botClient, chatId, messages, ct, session.IsAuthenticated && !(session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) ? MainCommandKeyboard : null);
+        }
+
+        static async Task HandleCoursesCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать курсы.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+                return;
+            }
+            await HandleLessonsListAsync(botClient, session, chatId, ct);
+        }
+
+        static async Task HandleLessonCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? argument, CancellationToken ct)
+        {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать урок.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(argument) || !int.TryParse(argument, out int lessonNumber) || lessonNumber <= 0) {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, укажите номер урока. Например: /lesson 1", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                return;
+            }
+            await HandleLessonDetailAsync(botClient, session, chatId, lessonNumber, ct);
+        }
+
+        static async Task HandleTestCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? argument, CancellationToken ct)
+        {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+                 await botClient.SendTextMessageAsync(chatId, "Вы уже находитесь в процессе теста. Введите ответ или /stoptest для остановки.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+                return;
+            }
+
+            if (argument == null || !int.TryParse(argument, out int testIdToStart))
+            {
+                // If no argument or invalid, maybe list tests or start a default one?
+                // For now, let's instruct to use the keyboard or provide an ID.
+                // Or, redirect to HandleTestsListAsync.
+                await HandleTestsListAsync(botClient, session, chatId, ct);
+                await botClient.SendTextMessageAsync(chatId, "Чтобы начать конкретный тест командой, введите /test <номер_теста>.", cancellationToken: ct);
+                return;
+            }
+            await StartActualTestAsync(botClient, session, chatId, testIdToStart, ct);
+        }
+
+        static async Task HandleTestDetailAsync(ITelegramBotClient botClient, UserSession session, long chatId, int testNumber, CancellationToken ct)
+        {
+            if (testDetails.TryGetValue(testNumber, out string? detailText))
+            {
+                await SendLongMessageAsync(botClient, chatId, detailText, ct, TestDetailKeyboard);
+                session.CurrentState = UserCurrentState.ViewingTestDetail;
+                session.ViewingItemId = testNumber;
+            }
+            else
+            {
+                await botClient.SendTextMessageAsync(chatId, "Извините, тест с таким номером не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.CurrentState = UserCurrentState.ViewingTestList;
+            }
+        }
+
+        static async Task DisplayCurrentTestQuestionAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            if (!session.ActiveTestId.HasValue || !activeTestsData.TryGetValue(session.ActiveTestId.Value, out var currentTestData))
+            {
+                await botClient.SendTextMessageAsync(chatId, "Ошибка: Тест не найден или не активен.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.EndCurrentTest();
+                session.CurrentState = UserCurrentState.MainMenu;
+                return;
+            }
+
+            if (session.CurrentQuestionIndex >= currentTestData.Questions.Count)
+            {
+                await botClient.SendTextMessageAsync(chatId, "Кажется, все вопросы закончились, но тест не был завершен корректно.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.EndCurrentTest();
+                session.CurrentState = UserCurrentState.MainMenu;
+                return;
+            }
+
+            QuestionData question = currentTestData.Questions[session.CurrentQuestionIndex];
+
+            var keyboardButtons = question.Options.Select(option => new KeyboardButton(option)).ToArray();
+            var replyKeyboardMarkup = new ReplyKeyboardMarkup( keyboardButtons.Select(kb => new[] { kb }) )
+            {
+                ResizeKeyboard = true,
+                OneTimeKeyboard = true
+            };
+
+            string questionMessage = $"Вопрос {session.CurrentQuestionIndex + 1} из {currentTestData.Questions.Count}:\n\n{question.Text}";
+
+            await botClient.SendTextMessageAsync(chatId, questionMessage, replyMarkup: replyKeyboardMarkup, cancellationToken: ct);
+        }
+
+        static async Task HandleStopTestCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            bool testWasStopped = false;
+            if (session.ActiveTestId.HasValue && session.CurrentState == UserCurrentState.TakingTest)
+            {
+                var testName = activeTestsData.TryGetValue(session.ActiveTestId.Value, out var testData) ? testData.TestName : "текущий";
+                session.EndCurrentTest();
+                await botClient.SendTextMessageAsync(chatId, $"Тест \"{testName}\" остановлен. Ваш прогресс не сохранен.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                testWasStopped = true;
+            }
+            else if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive) // Old system fallback
+            {
+                 _userSessionService.EndUserTest(session.UserId);
+                session.CurrentState = UserCurrentState.MainMenu;
+                await botClient.SendTextMessageAsync(chatId, "Тест (старая система) остановлен. Ваш прогресс не сохранен.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                testWasStopped = true;
+            }
+
+            if (!testWasStopped)
+            {
+                await botClient.SendTextMessageAsync(chatId, "Нет активного теста для остановки.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+            }
+        }
+
+        static async Task StartActualTestAsync(ITelegramBotClient botClient, UserSession session, long chatId, int testId, CancellationToken ct)
+        {
+            if (!activeTestsData.TryGetValue(testId, out var testToStart))
+            {
+                await botClient.SendTextMessageAsync(chatId, "Ошибка: Выбранный тест не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.CurrentState = UserCurrentState.ViewingTestList;
+                return;
+            }
+
+            if (testToStart.Questions == null || !testToStart.Questions.Any())
+            {
+                await botClient.SendTextMessageAsync(chatId, $"Ошибка: В тесте \"{testToStart.TestName}\" нет вопросов.", replyMarkup: TestDetailKeyboard, cancellationToken: ct);
+                session.CurrentState = UserCurrentState.ViewingTestDetail;
+                return;
+            }
+
+            session.StartNewTest(testId);
+
+            await botClient.SendTextMessageAsync(chatId, $"Начинаем тест: \"{testToStart.TestName}\"", cancellationToken: ct, replyMarkup: new ReplyKeyboardRemove());
+            await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+        }
+
+        static async Task HandleLessonsListAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать уроки.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+                return;
+            }
+
+            if (availableLessons == null || !availableLessons.Any())
+            {
+                await botClient.SendTextMessageAsync(chatId, "Извините, список уроков пока пуст.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                return;
+            }
+
+            var messageBuilder = new System.Text.StringBuilder("Доступные уроки:\n");
+            for (int i = 0; i < availableLessons.Count; i++)
+            {
+                messageBuilder.AppendLine($"{i + 1}. {availableLessons[i]}");
+            }
+            messageBuilder.AppendLine("\nВыберите урок, чтобы получить подробную информацию (функционал в следующем шаге).");
+
+            await botClient.SendTextMessageAsync(chatId, messageBuilder.ToString(), replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+            session.CurrentState = UserCurrentState.ViewingLessonList;
+        }
+
+        static async Task HandleTestsListAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+        {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать список тестов.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+                return;
+            }
+
+            if (availableTests == null || !availableTests.Any())
+            {
+                await botClient.SendTextMessageAsync(chatId, "Извините, список тестов пока пуст.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                return;
+            }
+
+            var messageBuilder = new System.Text.StringBuilder("Доступные тесты:\n");
+            for (int i = 0; i < availableTests.Count; i++)
+            {
+                messageBuilder.AppendLine($"{i + 1}. {availableTests[i]}");
+            }
+            messageBuilder.AppendLine("\nВыберите тест для начала (реализация запуска тестов — позже).");
+
+            await botClient.SendTextMessageAsync(chatId, messageBuilder.ToString(), replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+            session.CurrentState = UserCurrentState.ViewingTestList;
+        }
+
+        static async Task HandleLessonDetailAsync(ITelegramBotClient botClient, UserSession session, long chatId, int lessonNumber, CancellationToken ct)
+        {
+            if (lessonDetails.TryGetValue(lessonNumber, out string? detailText))
+            {
+                await SendLongMessageAsync(botClient, chatId, detailText, ct, LessonDetailKeyboard);
+                session.CurrentState = UserCurrentState.ViewingLessonDetail;
+                session.ViewingItemId = lessonNumber;
+            }
+            else
+            {
+                await botClient.SendTextMessageAsync(chatId, "Извините, урок с таким номером не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.CurrentState = UserCurrentState.ViewingLessonList;
+            }
+        }
+
+        static async Task SendLongMessageAsync(ITelegramBotClient botClient, long chatId, string message, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null, int chunkSize = 4000)
+        {
+            if (string.IsNullOrEmpty(message)) return;
+            var chunks = SplitMessage(message, chunkSize);
+            for (int i = 0; i < chunks.Count; i++)
+            {
+                bool isLastChunk = i == chunks.Count - 1;
+                await botClient.SendTextMessageAsync(
+                    chatId,
+                    chunks[i],
+                    replyMarkup: isLastChunk ? replyMarkup : null,
+                    cancellationToken: cancellationToken);
+
+                if (!isLastChunk)
+                {
+                    await Task.Delay(200, cancellationToken);
+                }
+            }
+        }
+
+        static async Task SendCombinedMessages(ITelegramBotClient botClient, long chatId, System.Collections.Generic.List<string> messages, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null)
+        {
+            string combined = string.Join("\n", messages);
+            await SendLongMessageAsync(botClient, chatId, combined, cancellationToken, replyMarkup);
+        }
+
+        public static System.Collections.Generic.List<string> SplitMessage(string message, int chunkSize = 4000)
+        {
+            var messages = new System.Collections.Generic.List<string>();
+            if (string.IsNullOrEmpty(message)) return messages;
+            for (int i = 0; i < message.Length; i += chunkSize)
+            {
+                messages.Add(message.Substring(i, Math.Min(chunkSize, message.Length - i)));
+            }
+            return messages;
+        }
+    } // End of Program class
+
+    public static class AuthorizationService
+    {
+        private const string HardcodedPassword = "omni_password123";
+
+        public static bool Authenticate(long userId, string? password, UserSessionService sessionService)
+        {
+            if (password == HardcodedPassword)
+            {
+                sessionService.UpdateUserAuthentication(userId, true);
+                Console.WriteLine($"Bot Response: Authentication successful for User {userId}. You now have access to all commands.");
+                return true;
+            }
+            Console.WriteLine($"Bot Response: Authentication failed for User {userId}. Invalid password.");
+            return false;
+        }
+
+        public static bool CheckAuthentication(long userId, UserSessionService sessionService)
+        {
+            var session = sessionService.GetUserSession(userId);
+            return session.IsAuthenticated;
+        }
+
+        public static void Logout(long userId, UserSessionService sessionService)
+        {
+            sessionService.UpdateUserAuthentication(userId, false);
+            sessionService.EndUserTest(userId); // This now calls session.EndCurrentTest()
+            Console.WriteLine($"Bot Response: User {userId} has been logged out.");
+        }
+    }
+    // Removed other static class placeholders like CourseService, TestingService, UserInteractionService for brevity in this diff
+    // as they were empty and not the cause of the current errors.
 }
