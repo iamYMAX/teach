@@ -1,0 +1,60 @@
+{
+  "courseName": "Junior Admin Level 1",
+  "questions": [
+    {
+      "id": 1,
+      "questionText": "What does CPU stand for?",
+      "options": [
+        "Central Processing Unit",
+        "Computer Personal Unit",
+        "Central Power Unit",
+        "Core Processing Unit"
+      ],
+      "correctAnswer": "Central Processing Unit"
+    },
+    {
+      "id": 2,
+      "questionText": "Which of the following is a common operating system?",
+      "options": [
+        "Microsoft Word",
+        "Google Chrome",
+        "Linux",
+        "Adobe Photoshop"
+      ],
+      "correctAnswer": "Linux"
+    },
+    {
+      "id": 3,
+      "questionText": "What is RAM an acronym for?",
+      "options": [
+        "Read Access Memory",
+        "Random Access Memory",
+        "Run All Memory",
+        "Realtime Application Memory"
+      ],
+      "correctAnswer": "Random Access Memory"
+    },
+    {
+      "id": 4,
+      "questionText": "What is a common use for an IP address?",
+      "options": [
+        "To identify a website's domain name",
+        "To identify a device on a network",
+        "To store user passwords",
+        "To cool down the computer"
+      ],
+      "correctAnswer": "To identify a device on a network"
+    },
+    {
+      "id": 5,
+      "questionText": "Which command is used in Linux to list files and directories?",
+      "options": [
+        "dir",
+        "list",
+        "ls",
+        "show"
+      ],
+      "correctAnswer": "ls"
+    }
+  ]
+}
