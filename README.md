@@ -76,16 +76,19 @@ The bot understands the following commands. Some commands are only available aft
 *(Requires successful `/login`)*
 
 After logging in, a command keyboard will appear with quick actions:
--   **"📘 Уроки"**: Displays a list of available lessons for the Junior Admin course.
--   **"🧪 Тесты"**: Displays a list of available tests for the Junior Admin course.
+-   **"📘 Уроки"**: Displays a list of available lessons. Send the number of a lesson to view its details.
+-   **"🧪 Тесты"**: Displays a list of available tests. Send the number of a test to view its details.
 -   **"🔐 Выйти"**: Logs you out and removes the keyboard.
+
+When viewing lesson details, a "Назад" button will appear to return to the lesson list.
+When viewing test details, "Начать тест" (placeholder for now) and "Назад" buttons will appear.
 
 You can also use the following slash commands:
 -   `/logout`: Logs you out of the bot (and removes the keyboard).
--   `/courses`: Lists available course levels. (Equivalent to "📘 Уроки" button)
--   `/lesson <number>`: Retrieves and displays the theory and practice content for the specified lesson number.
+-   `/courses`: Lists available course levels. (Equivalent to "📘 Уроки" button action)
+-   `/lesson <number>`: Manually retrieves and displays the theory and practice content for the specified lesson number (note: this is the old way, primarily for direct access if needed. The keyboard flow is preferred).
     *   Example: `/lesson 1`
--   `/test <test_id_or_lesson_number>`: Starts an interactive test. (Currently loads the main Junior Admin test).
+-   `/test <test_id_or_lesson_number>`: Manually starts an interactive test (note: this is the old way, primarily for direct access if needed. The keyboard flow is preferred for viewing details first).
     *   Example: `/test 1`
     *   During a test, simply send the number corresponding to your chosen answer.
 -   `/stoptest`: If you are in an active test, this command will stop it. Your progress for that test attempt will not be saved.

@@ -36,10 +36,39 @@ namespace Omnieye.Bot
             "Тест 2: Продвинутый тест"
         };
 
+        private static readonly Dictionary<int, string> lessonDetails = new Dictionary<int, string>
+        {
+            { 1, "Урок 1: Введение в систему\n\nЗдесь рассказывается об основах работы с ботом и системой." },
+            { 2, "Урок 2: Основы работы\n\nОписание основных функций и интерфейса." },
+            { 3, "Урок 3: Продвинутые возможности\n\nДополнительные настройки и советы." }
+        };
+
+        private static readonly Dictionary<int, string> testDetails = new Dictionary<int, string>
+        {
+            { 1, "Тест 1: Проверка знаний по основам\n\nВключает 10 вопросов по базовым темам." },
+            { 2, "Тест 2: Продвинутый тест\n\nСложные вопросы для опытных пользователей." }
+        };
+
         private static readonly ReplyKeyboardMarkup MainCommandKeyboard = new ReplyKeyboardMarkup(new[]
         {
             new[] { new KeyboardButton("📘 Уроки"), new KeyboardButton("🧪 Тесты") },
             new[] { new KeyboardButton("🔐 Выйти") }
+        })
+        {
+            ResizeKeyboard = true
+        };
+
+        private static readonly ReplyKeyboardMarkup LessonDetailKeyboard = new ReplyKeyboardMarkup(new[]
+        {
+            new KeyboardButton[] { "Назад" }
+        })
+        {
+            ResizeKeyboard = true
+        };
+
+        private static readonly ReplyKeyboardMarkup TestDetailKeyboard = new ReplyKeyboardMarkup(new[]
+        {
+            new KeyboardButton[] { "Начать тест", "Назад" }
         })
         {
             ResizeKeyboard = true
@@ -134,6 +163,50 @@ namespace Omnieye.Bot
                     case "🧪 Тесты":
                         await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
                         break;
+                    case "Назад": // "Back" button
+                        if (session.CurrentState == UserCurrentState.ViewingLessonDetail)
+                        {
+                            await HandleLessonsListAsync(botClient, session, chatId, cancellationToken);
+                            // HandleLessonsListAsync already sets state to ViewingLessonList
+                        }
+                        else if (session.CurrentState == UserCurrentState.ViewingTestDetail)
+                        {
+                            await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
+                            // HandleTestsListAsync already sets state to ViewingTestList
+                        }
+                        else
+                        {
+                            // If "Назад" is pressed from an unexpected state, default to Main Menu or send current keyboard
+                            // For now, let's assume "Назад" always means go to the relevant list or main menu if no list context.
+                            // But our "Назад" buttons are only on detail views, which should take to lists.
+                            // If they are in ViewingLessonList or ViewingTestList and press a "Назад" (if it existed there)
+                            // they'd go to MainMenu.
+                            // For now, this case might not be hit if "Назад" is only on detail keyboards.
+                            // If it is hit, sending MainCommandKeyboard is a safe fallback.
+                             await botClient.SendTextMessageAsync(chatId, "Возвращаемся в главное меню.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
+                             session.CurrentState = UserCurrentState.MainMenu;
+                        }
+                        break;
+                    case "Начать тест": // "Start Test" button
+                        if (session.CurrentState == UserCurrentState.ViewingTestDetail)
+                        {
+                            // Placeholder message as per requirements
+                            await botClient.SendTextMessageAsync(
+                                chatId,
+                                "Функция запуска теста будет реализована позже.",
+                                replyMarkup: TestDetailKeyboard, // Keep TestDetailKeyboard visible
+                                cancellationToken: cancellationToken);
+                            // In a real scenario, you might call a method here to start the actual test:
+                            // await StartActualTestAsync(botClient, session, chatId, session.ViewingItemId.Value, cancellationToken);
+                            // And that method would then set the state to UserCurrentState.TakingTest and display the first question.
+                        }
+                        else
+                        {
+                            // If "Начать тест" is pressed from an unexpected state
+                            await botClient.SendTextMessageAsync(chatId, "Пожалуйста, сначала выберите тест из списка.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
+                            // Optionally, call HandleTestsListAsync if you want to redirect them
+                        }
+                        break;
                     case "🔐 Выйти":
                         await HandleLogoutCommandAsync(botClient, session, chatId, cancellationToken);
                         break;
@@ -148,38 +221,27 @@ namespace Omnieye.Bot
             // This is a simplified approach. A more robust solution might involve tracking user state (e.g., "justViewedLessonsList").
             if (session.IsAuthenticated && int.TryParse(messageText, out int selectionNumber) && selectionNumber > 0)
             {
-                // For simplicity, we don't know if they just saw lessons or tests.
-                // We'll check both lists. This could be ambiguous if lists overlap in size.
-                string? selectedItemName = null;
-                bool isLesson = false;
-
-                if (selectionNumber <= availableLessons.Count)
+                bool selectionHandled = false;
+                if (session.CurrentState == UserCurrentState.ViewingLessonList)
                 {
-                    selectedItemName = availableLessons[selectionNumber - 1]; // 0-indexed
-                    isLesson = true;
+                    await HandleLessonDetailAsync(botClient, session, chatId, selectionNumber, cancellationToken);
+                    selectionHandled = true;
                 }
-                // If not found in lessons, or to give tests priority if numbers are ambiguous and they just saw tests (though we don't track that context here yet)
-                // A simple check: if it could be a test, assume it might be.
-                // This part is very basic and would need refinement for real use.
-                // For now, if it's a valid lesson index, we'll prefer that.
-                // If not a lesson, then check if it's a test.
-                if (selectedItemName == null && selectionNumber <= availableTests.Count)
+                else if (session.CurrentState == UserCurrentState.ViewingTestList)
                 {
-                     selectedItemName = availableTests[selectionNumber - 1]; // 0-indexed
-                     isLesson = false; // It's a test
+                    await HandleTestDetailAsync(botClient, session, chatId, selectionNumber, cancellationToken);
+                    selectionHandled = true;
                 }
+                // Potentially add other states here if numeric input is expected elsewhere.
 
-
-                if (selectedItemName != null)
+                if (selectionHandled)
                 {
-                    await botClient.SendTextMessageAsync(
-                        chatId,
-                        $"Вы выбрали \"{selectedItemName}\". Функция будет реализована позже.",
-                        replyMarkup: MainCommandKeyboard,
-                        cancellationToken: cancellationToken);
-                    return; // Processed as a selection
+                    return; // Input was processed as a numeric selection for a list.
                 }
-                // If it's a number but not a valid selection from either list, it will fall through to command processing.
+                // If it was a number but not in a list-viewing state, or an invalid number for that list,
+                // it will fall through. We might want to add a generic "Invalid selection" message here
+                // if session.CurrentState was one of the list viewing states but the number was out of bounds.
+                // For now, HandleLessonDetailAsync/HandleTestDetailAsync handle "not found".
             }
 
             var parts = messageText.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
@@ -287,7 +349,10 @@ namespace Omnieye.Bot
                  await botClient.SendTextMessageAsync(chatId, "You are not currently authenticated.", cancellationToken: ct);
                 return;
             }
-            AuthorizationService.Logout(session.UserId, _userSessionService);
+            AuthorizationService.Logout(session.UserId, _userSessionService); // This already calls EndUserTest
+            session.CurrentState = UserCurrentState.MainMenu; // Explicitly reset navigation state
+            // ViewingItemId will be naturally irrelevant once state is MainMenu or will be overwritten on next valid navigation.
+
             await botClient.SendTextMessageAsync(
                 chatId,
                 "You have been logged out.",
@@ -315,6 +380,15 @@ namespace Omnieye.Bot
             else
             {
                 await SendCombinedMessages(botClient, chatId, messages, ct);
+            }
+            // If authenticated and not in a test, ensure MainCommandKeyboard is shown
+            else if (session.IsAuthenticated)
+            {
+                 await botClient.SendTextMessageAsync(chatId, string.Join("\n", messages), replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+            }
+            else // Not authenticated
+            {
+                 await botClient.SendTextMessageAsync(chatId, string.Join("\n", messages), cancellationToken: ct);
             }
         }
 
@@ -432,6 +506,21 @@ namespace Omnieye.Bot
             }
         }
 
+        static async Task HandleTestDetailAsync(ITelegramBotClient botClient, UserSession session, long chatId, int testNumber, CancellationToken ct)
+        {
+            if (testDetails.TryGetValue(testNumber, out string? detailText))
+            {
+                await SendLongMessageAsync(botClient, chatId, detailText, ct, TestDetailKeyboard);
+                session.CurrentState = UserCurrentState.ViewingTestDetail;
+                session.ViewingItemId = testNumber; // Store which test is being viewed
+            }
+            else
+            {
+                await botClient.SendTextMessageAsync(chatId, "Извините, тест с таким номером не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.CurrentState = UserCurrentState.ViewingTestList; // Take them back to the list view
+            }
+        }
+
         static async Task DisplayCurrentQuestionAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
         {
             if (session.CurrentTestState == null || !session.CurrentTestState.IsTestActive) return;
@@ -483,6 +572,7 @@ namespace Omnieye.Bot
             messageBuilder.AppendLine("\nВыберите урок, чтобы получить подробную информацию (функционал в следующем шаге).");
 
             await botClient.SendTextMessageAsync(chatId, messageBuilder.ToString(), replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+            session.CurrentState = UserCurrentState.ViewingLessonList;
         }
 
         static async Task HandleTestsListAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
@@ -508,17 +598,47 @@ namespace Omnieye.Bot
             messageBuilder.AppendLine("\nВыберите тест для начала (реализация запуска тестов — позже).");
 
             await botClient.SendTextMessageAsync(chatId, messageBuilder.ToString(), replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+            session.CurrentState = UserCurrentState.ViewingTestList;
+        }
+
+        static async Task HandleLessonDetailAsync(ITelegramBotClient botClient, UserSession session, long chatId, int lessonNumber, CancellationToken ct)
+        {
+            if (lessonDetails.TryGetValue(lessonNumber, out string? detailText))
+            {
+                await SendLongMessageAsync(botClient, chatId, detailText, ct, LessonDetailKeyboard); // Use SendLongMessageAsync for potentially long details
+                session.CurrentState = UserCurrentState.ViewingLessonDetail;
+                session.ViewingItemId = lessonNumber; // Store which lesson is being viewed
+            }
+            else
+            {
+                await botClient.SendTextMessageAsync(chatId, "Извините, урок с таким номером не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                // Optionally, revert state to ViewingLessonList or MainMenu if appropriate
+                // For now, if they were in ViewingLessonList, they'd remain there implicitly until next valid action
+                // Or explicitly set it back:
+                session.CurrentState = UserCurrentState.ViewingLessonList; // Take them back to the list view contextually
+                // Consider calling HandleLessonsListAsync here if you want to re-show the list immediately.
+            }
         }
 
         // Helper to send potentially long messages by splitting them
-        static async Task SendLongMessageAsync(ITelegramBotClient botClient, long chatId, string message, CancellationToken cancellationToken, int chunkSize = 4000)
+        // Modified to accept an optional IReplyMarkup
+        static async Task SendLongMessageAsync(ITelegramBotClient botClient, long chatId, string message, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null, int chunkSize = 4000)
         {
             if (string.IsNullOrEmpty(message)) return;
             var chunks = SplitMessage(message, chunkSize);
-            foreach (var chunk in chunks)
+            for (int i = 0; i < chunks.Count; i++)
             {
-                await botClient.SendTextMessageAsync(chatId, chunk, cancellationToken: cancellationToken);
-                await Task.Delay(200, cancellationToken); // Small delay to avoid rate limiting, if necessary
+                bool isLastChunk = i == chunks.Count - 1;
+                await botClient.SendTextMessageAsync(
+                    chatId,
+                    chunks[i],
+                    replyMarkup: isLastChunk ? replyMarkup : null, // Only send markup with the last chunk
+                    cancellationToken: cancellationToken);
+
+                if (!isLastChunk) // No delay after the last chunk
+                {
+                    await Task.Delay(200, cancellationToken); // Small delay to avoid rate limiting
+                }
             }
         }
 
