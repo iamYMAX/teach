@@ -258,17 +258,9 @@ namespace Omnieye.Bot
                 }
                 return; // Input processed (or re-prompted) within test context
             }
-            // Check for OLD test system state (UserTestState from Models/JSON) - this should be phased out
-            else if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive)
-            {
-                if (int.TryParse(messageText, out int answerOpt) && answerOpt > 0 &&
-                    session.CurrentTestState.GetCurrentQuestion() != null &&
-                    answerOpt <= session.CurrentTestState.GetCurrentQuestion().Options.Count)
-                {
-                    await HandleAnswerInputAsync(botClient, userId, chatId, answerOpt - 1, cancellationToken);
-                    return;
-                }
-            }
+            // The OLD test system's answer input (HandleAnswerInputAsync) and related checks for
+            // session.CurrentTestState.IsTestActive for numeric input are now removed/commented out.
+            // All active test answer processing is handled by the session.CurrentState == UserCurrentState.TakingTest block.
 
 
             // Handle keyboard button presses first if user is authenticated
@@ -410,11 +402,10 @@ namespace Omnieye.Bot
                         await HandleStopTestCommandAsync(botClient, session, chatId, cancellationToken);
                         break;
                     default:
-                        if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive) {
-                             await botClient.SendTextMessageAsync(chatId, $"Invalid input. Please enter the number of your answer or use /stoptest.", cancellationToken: cancellationToken);
-                        } else {
-                             await botClient.SendTextMessageAsync(chatId, $"Unknown command '{command}'. Try /help for commands.", cancellationToken: cancellationToken);
-                        }
+                        // The UserCurrentState.TakingTest block in HandleUpdateAsync already handles non-option messages during a test.
+                        // So, if it reaches here, it's an unknown command when not in a new system test.
+                        // The old CurrentTestState check is removed.
+                        await botClient.SendTextMessageAsync(chatId, $"Unknown command '{command}'. Try /help for commands.", cancellationToken: cancellationToken);
                         break;
                 }
             }
@@ -441,8 +432,9 @@ namespace Omnieye.Bot
 
         static async Task HandleLoginCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? password, CancellationToken ct)
         {
-            if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive) {
-                await botClient.SendTextMessageAsync(chatId, "Please finish or stop the current test (/stoptest) before logging in again.", cancellationToken: ct);
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем пытаться войти.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
             }
             if (session.IsAuthenticated) {
@@ -466,8 +458,9 @@ namespace Omnieye.Bot
 
         static async Task HandleLogoutCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
         {
-            if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive) {
-                await botClient.SendTextMessageAsync(chatId, "Please finish or stop the current test (/stoptest) before logging out.", cancellationToken: ct);
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)  {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем выходить из системы.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
             }
             if (!session.IsAuthenticated) {
@@ -496,13 +489,19 @@ namespace Omnieye.Bot
             {
                 messages.Add("Please use /login <password> to access content.");
             }
-            if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive)
+
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
             {
-                messages.Add("You are currently in a test. Enter an answer or use /stoptest.");
-                await SendCombinedMessages(botClient, chatId, messages, ct);
-                await DisplayCurrentQuestionAsync(botClient, session, chatId, ct);
+                messages.Add("Вы находитесь в процессе теста. Введите ответ или /stoptest для остановки.");
+                // We don't want to send the welcome messages if they are in a test, just the test question.
+                // So, send the current question directly.
+                // However, the HandleUpdateAsync already prioritizes test answers.
+                // This HandleStartCommand should ideally not be hit if they are in a test and type /start.
+                // If it is, re-displaying question is a good fallback.
+                await botClient.SendTextMessageAsync(chatId, "Вы находитесь в процессе теста. Введите ответ или /stoptest для остановки.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
             }
-            else // Not in an active test
+            else // Not in an active test (new system)
             {
                 // The messages list already contains the base welcome and login prompt if applicable.
                 // Now decide which keyboard to send.
@@ -522,10 +521,10 @@ namespace Omnieye.Bot
             var messages = new System.Collections.Generic.List<string>();
             messages.Add("Available commands:");
 
-            if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive)
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
             {
-                messages.Add("You are currently in a test.");
-                messages.Add("Enter the number of your chosen option to answer.");
+                messages.Add("Вы находитесь в процессе теста.");
+                messages.Add("Выберите вариант ответа кнопкой или введите /stoptest для остановки теста.");
                 messages.Add("/stoptest - Stop the current test.");
             }
             else if (!session.IsAuthenticated)
@@ -548,22 +547,34 @@ namespace Omnieye.Bot
 
         static async Task HandleCoursesCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
         {
-            if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive) {
-                await botClient.SendTextMessageAsync(chatId, "Please finish or stop the current test (/stoptest) before viewing courses.", cancellationToken: ct);
-                await DisplayCurrentQuestionAsync(botClient, session, chatId, ct);
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать курсы.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
             }
-            await botClient.SendTextMessageAsync(chatId, "Available courses: Junior Admin (More coming soon!)", cancellationToken: ct);
+            // This command is now effectively the same as "📘 Уроки" button, which calls HandleLessonsListAsync.
+            // For consistency, let's make /courses also call HandleLessonsListAsync.
+            await HandleLessonsListAsync(botClient, session, chatId, ct);
+            // await botClient.SendTextMessageAsync(chatId, "Available courses: Junior Admin (More coming soon!)", cancellationToken: ct); // Old behavior
         }
 
         static async Task HandleLessonCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? argument, CancellationToken ct)
         {
-            if (session.CurrentTestState != null && session.CurrentTestState.IsTestActive) {
-                await botClient.SendTextMessageAsync(chatId, "Please finish or stop the current test (/stoptest) before starting a lesson.", cancellationToken: ct);
-                await DisplayCurrentQuestionAsync(botClient, session, chatId, ct);
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать урок.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
             }
 
+            // This command is now for directly viewing a lesson detail if the number is known.
+            // It bypasses the list view.
+            if (string.IsNullOrWhiteSpace(argument) || !int.TryParse(argument, out int lessonNumber) || lessonNumber <= 0) {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, укажите номер урока. Например: /lesson 1", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                return;
+            }
+            // Call HandleLessonDetailAsync directly
+            await HandleLessonDetailAsync(botClient, session, chatId, lessonNumber, ct);
+            /* Original logic for manual /lesson command before detail view:
             if (string.IsNullOrWhiteSpace(argument) || !int.TryParse(argument, out int lessonNumber) || lessonNumber <= 0) {
                 await botClient.SendTextMessageAsync(chatId, "Please provide a valid lesson number. Usage: /lesson <number>", cancellationToken: ct);
                 return;
@@ -608,28 +619,35 @@ namespace Omnieye.Bot
             _userSessionService.StartUserTest(session.UserId, testData);
             // session = _userSessionService.GetUserSession(session.UserId); // Refresh, though StartUserTest modifies the instance
             await botClient.SendTextMessageAsync(chatId, $"Starting Test: {testData.CourseName}", cancellationToken: ct);
-            await DisplayCurrentQuestionAsync(botClient, session, chatId, ct);
+            // await DisplayCurrentQuestionAsync(botClient, session, chatId, ct); // OLD CALL - to be removed/refactored if /test is kept
+            // If /test command is to start a NEW system test:
+            // Find the TestData from activeTestsData based on argument if possible, then call StartActualTestAsync.
+            // For now, let's assume /test command tries to start test ID 1 from the new system if no argument.
+            if (argument == null || !int.TryParse(argument, out int testIdToStart))
+            {
+                testIdToStart = 1; // Default to test 1 if no valid ID
+            }
+            await StartActualTestAsync(botClient, session, chatId, testIdToStart, ct);
         }
 
-        static async Task HandleAnswerInputAsync(ITelegramBotClient botClient, long userId, long chatId, int selectedOptionIndex, CancellationToken ct)
-        {
-            var session = _userSessionService.GetUserSession(userId); // Ensure we have the latest session state
-            if (session.CurrentTestState == null || !session.CurrentTestState.IsTestActive) {
-                await botClient.SendTextMessageAsync(chatId, "No active test. Use /test to start one.", cancellationToken: ct);
-                return;
-            }
-
-            session.CurrentTestState.SubmitAnswer(selectedOptionIndex);
-
-            if (session.CurrentTestState.IsTestActive) {
-                await DisplayCurrentQuestionAsync(botClient, session, chatId, ct);
-            } else {
-                var (score, totalQuestions) = session.CurrentTestState.CalculateScore();
-                await botClient.SendTextMessageAsync(chatId, $"Test Complete! Your score: {score} out of {totalQuestions}.", cancellationToken: ct);
-                _userSessionService.EndUserTest(userId);
-                await botClient.SendTextMessageAsync(chatId, "Type /help for more commands.", cancellationToken: ct);
-            }
-        }
+        // static async Task HandleAnswerInputAsync(ITelegramBotClient botClient, long userId, long chatId, int selectedOptionIndex, CancellationToken ct)
+        // {
+        //     // THIS METHOD IS FOR THE OLD UserTestState (JSON-based) SYSTEM AND SHOULD BE CONSIDERED DEPRECATED OR REMOVED
+        //     var session = _userSessionService.GetUserSession(userId);
+        //     if (session.CurrentTestState == null || !session.CurrentTestState.IsTestActive) {
+        //         await botClient.SendTextMessageAsync(chatId, "No active test. Use /test to start one.", cancellationToken: ct);
+        //         return;
+        //     }
+        //     session.CurrentTestState.SubmitAnswer(selectedOptionIndex);
+        //     if (session.CurrentTestState.IsTestActive) {
+        //         // await DisplayCurrentQuestionAsync(botClient, session, chatId, ct); // OLD
+        //     } else {
+        //         var (score, totalQuestions) = session.CurrentTestState.CalculateScore();
+        //         await botClient.SendTextMessageAsync(chatId, $"Test Complete! Your score: {score} out of {totalQuestions}.", cancellationToken: ct);
+        //         _userSessionService.EndUserTest(userId);
+        //         await botClient.SendTextMessageAsync(chatId, "Type /help for more commands.", cancellationToken: ct);
+        //     }
+        // }
 
         static async Task HandleTestDetailAsync(ITelegramBotClient botClient, UserSession session, long chatId, int testNumber, CancellationToken ct)
         {
@@ -645,26 +663,6 @@ namespace Omnieye.Bot
                 session.CurrentState = UserCurrentState.ViewingTestList; // Take them back to the list view
             }
         }
-
-        // This was for the OLD test system (UserTestState from Models/JSON)
-        // static async Task DisplayCurrentQuestionAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
-        // {
-        //     if (session.CurrentTestState == null || !session.CurrentTestState.IsTestActive) return;
-
-        //     TestQuestion question = session.CurrentTestState.GetCurrentQuestion();
-        //     if (question == null) { // Should not happen if IsTestActive is true
-        //          await botClient.SendTextMessageAsync(chatId, "Error: Could not load the current question.", cancellationToken: ct);
-        //         _userSessionService.EndUserTest(session.UserId); // End test to prevent loop
-        //         return;
-        //     }
-        //     var questionText = $"Question {session.CurrentTestState.CurrentQuestionIndex + 1} of {session.CurrentTestState.CurrentTest.Questions.Count}:\n{question.QuestionText}\n\n";
-        //     for (int i = 0; i < question.Options.Count; i++) {
-        //         questionText += $"{i + 1}. {question.Options[i]}\n";
-        //     }
-        //     questionText += "\nYour answer (enter the number):";
-        //     await botClient.SendTextMessageAsync(chatId, questionText, cancellationToken: ct);
-        // }
-
 
         // New method for the new TestData structure
         static async Task DisplayCurrentTestQuestionAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
