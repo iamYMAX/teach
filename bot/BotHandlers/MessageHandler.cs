@@ -15,18 +15,20 @@ namespace OmnieyeBot.BotHandlers
     public class MessageHandler
     {
         private readonly ITelegramBotClient _botClient;
-        private readonly NewCourseService _courseService;
         private readonly ExistingUserSessionService _userSessionService;
+        private readonly CourseContentLoaderService _courseContentLoaderService; // Renamed from OmnieyeBot.Services for consistency
         private readonly CommandRouter _commandRouter;
 
-        public MessageHandler(ITelegramBotClient botClient, NewCourseService courseService, ExistingUserSessionService userSessionService)
+        public MessageHandler(ITelegramBotClient botClient,
+                              ExistingUserSessionService userSessionService,
+                              CourseContentLoaderService courseContentLoaderService) // Updated constructor
         {
             _botClient = botClient;
-            _courseService = courseService;
             _userSessionService = userSessionService;
+            _courseContentLoaderService = courseContentLoaderService;
 
-            // Pass botClient, new courseService, and existing userSessionService to CommandRouter
-            _commandRouter = new CommandRouter(_botClient, _courseService, _userSessionService);
+            // Pass botClient, userSessionService, and courseContentLoaderService to CommandRouter
+            _commandRouter = new CommandRouter(_botClient, _userSessionService, _courseContentLoaderService);
         }
 
         public async Task<bool> HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
@@ -54,6 +56,76 @@ namespace OmnieyeBot.BotHandlers
             bool handled = await _commandRouter.RouteAsync(message, cancellationToken);
             Console.WriteLine($"[MessageHandler] CommandRouter handled status: {handled} for message: '{messageText}'"); // DEBUG LOG
             return handled;
+        }
+
+        public async Task HandleCallbackQueryAsync(ITelegramBotClient botClient, CallbackQuery callbackQuery, CancellationToken cancellationToken)
+        {
+            if (callbackQuery.Message == null || string.IsNullOrEmpty(callbackQuery.Data))
+            {
+                Console.WriteLine("[MessageHandler] Received CallbackQuery with no Message or Data.");
+                return;
+            }
+
+            long chatId = callbackQuery.Message.Chat.Id;
+            int messageId = callbackQuery.Message.MessageId; // Message to potentially edit
+            string callbackData = callbackQuery.Data;
+
+            Console.WriteLine($"[MessageHandler] Received CallbackQuery: Data='{callbackData}', ChatId='{chatId}', MessageId='{messageId}'");
+
+            var userSession = _userSessionService.GetUserSession(chatId); // ExistingUserSessionService
+
+            // Answer callback query to remove the "loading" state on the button
+            try
+            {
+                await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MessageHandler] Error answering callback query: {ex.Message}");
+                // Non-critical, continue processing
+            }
+
+            // Route based on callbackData prefix
+            if (callbackData.StartsWith("flashcards_"))
+            {
+                await _commandRouter.HandleStartFlashcardSessionCallbackAsync(callbackData, userSession, chatId, cancellationToken);
+            }
+            else if (callbackData.StartsWith("show_answer_"))
+            {
+                // Pass messageId for potential editing
+                // This is where GetLastBotMessageId was problematic. We should use callbackQuery.Message.MessageId
+                await _commandRouter.HandleShowAnswerCallbackAsync(callbackData, userSession, chatId, /* pass messageId for editing */ callbackQuery.Message.MessageId, cancellationToken);
+            }
+            else if (callbackData.StartsWith("next_flashcard_"))
+            {
+                await _commandRouter.HandleNextFlashcardCallbackAsync(callbackData, userSession, chatId, cancellationToken);
+            }
+            else if (callbackData.StartsWith("exit_flashcards_"))
+            {
+                await _commandRouter.HandleExitFlashcardsCallbackAsync(callbackData, userSession, chatId, cancellationToken);
+            }
+            else if (callbackData.StartsWith("quiz_")) // General prefix for quiz actions
+            {
+                if (callbackData.Contains("_answer_")) // E.g., quiz_answer_{moduleId}_{lessonId}_{qIndex}_{optIndex}
+                {
+                    await _commandRouter.HandleQuizAnswerCallbackAsync(callbackData, userSession, chatId, callbackQuery.Message.MessageId, cancellationToken);
+                }
+                else // E.g., quiz_{moduleId}_{lessonId} for starting quiz
+                {
+                    await _commandRouter.HandleStartQuizSessionCallbackAsync(callbackData, userSession, chatId, cancellationToken);
+                }
+            }
+            else if (callbackData.StartsWith("exit_quiz_")) // Specific exit if added as a button during quiz
+            {
+                 await _commandRouter.HandleExitQuizCallbackAsync(callbackData, userSession, chatId, cancellationToken);
+            }
+            // Add more callback routes here as needed
+            else
+            {
+                Console.WriteLine($"[MessageHandler] Unknown CallbackQuery Data: {callbackData}");
+                // Optionally send a message to user or just ignore.
+                // await botClient.SendTextMessageAsync(chatId, "Неизвестное действие.", cancellationToken: cancellationToken);
+            }
         }
     }
 }

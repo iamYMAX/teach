@@ -20,9 +20,9 @@ using System.Timers;
 using IOFile = System.IO.File;
 
 // Using statements for the NEW course navigation logic
-using NewCourseService = OmnieyeBot.Services.CourseService;
+// using NewCourseService = OmnieyeBot.Services.CourseService; // Old static course service - no longer needed at Program level
 using NewMessageHandler = OmnieyeBot.BotHandlers.MessageHandler;
-// Note: OmnieyeBot.Models (for new Course/Lesson) are used by NewCourseService.
+using NewCourseContentLoaderService = OmnieyeBot.Services.CourseContentLoaderService; // Added
 // Note: Omnieye.Bot.States.UserSession (existing) is used by ExistingUserSessionService and NewMessageHandler.
 
 namespace Omnieye.Bot
@@ -35,7 +35,7 @@ namespace Omnieye.Bot
         private static TestLoaderService _testLoaderService = new TestLoaderService();
 
         // New services and handlers for course navigation
-        private static NewCourseService _newCourseService;
+        private static NewCourseContentLoaderService _courseContentLoaderService; // NEW
         private static NewMessageHandler _newCourseMessageHandler;
 
         private static ITelegramBotClient? _botClient;
@@ -162,28 +162,19 @@ namespace Omnieye.Bot
             _botClient = new TelegramBotClient(botToken);
             _cts = new CancellationTokenSource();
 
-            // Initialize NEW CourseService
-            _newCourseService = new NewCourseService();
+            // Initialize NEW CourseContentLoaderService
+            _courseContentLoaderService = new NewCourseContentLoaderService();
 
             // Initialize NEW MessageHandler for course navigation
-            // It needs botClient, new courseService, and existing userSessionService
-            _newCourseMessageHandler = new NewMessageHandler(_botClient, _newCourseService, _userSessionService);
+            // It needs botClient, existing userSessionService, and the new courseContentLoaderService
+            _newCourseMessageHandler = new NewMessageHandler(_botClient, _userSessionService, _courseContentLoaderService);
 
             StartAutoBackup();
 
             var receiverOptions = new ReceiverOptions { AllowedUpdates = Array.Empty<UpdateType>() };
 
             _botClient.StartReceiving(
-                updateHandler: async (client, update, cancellationToken) =>
-                {
-                    // Try handling with the new course navigation logic first
-                    bool handledByCourseLogic = await _newCourseMessageHandler.HandleUpdateAsync(client, update, cancellationToken);
-
-                    if (!handledByCourseLogic)
-                    {
-                        await HandleUpdateAsyncOriginal(client, update, cancellationToken);
-                    }
-                },
+                updateHandler: GlobalUpdateHandlerAsync, // Changed to a new method
                 pollingErrorHandler: HandlePollingErrorAsync,
                 receiverOptions: receiverOptions,
                 cancellationToken: _cts.Token);
@@ -206,12 +197,57 @@ namespace Omnieye.Bot
             Console.WriteLine("Sessions saved. Exiting.");
         }
 
+        // New Global Update Handler
+        static async Task GlobalUpdateHandlerAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (update.Type == UpdateType.Message)
+                {
+                    // Try handling with the new course navigation logic first (text messages)
+                    bool handledByCourseLogic = await _newCourseMessageHandler.HandleUpdateAsync(botClient, update, cancellationToken);
+
+                    if (!handledByCourseLogic)
+                    {
+                        // If not handled by course logic, pass to the original generic handler for text messages
+                        await HandleUpdateAsyncOriginal(botClient, update, cancellationToken);
+                    }
+                }
+                else if (update.Type == UpdateType.CallbackQuery)
+                {
+                    // Handle inline button callbacks
+                    await _newCourseMessageHandler.HandleCallbackQueryAsync(botClient, update.CallbackQuery, cancellationToken);
+                }
+                // Potentially handle other update types here if needed by original logic
+                else if (update.Message != null) // Fallback for other message types to original handler
+                {
+                     await HandleUpdateAsyncOriginal(botClient, update, cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GlobalUpdateHandlerAsync: {ex}");
+                // Optionally, notify user or admin about the error
+                if (update.Message?.Chat?.Id != null)
+                {
+                    await botClient.SendTextMessageAsync(update.Message.Chat.Id, "Произошла внутренняя ошибка. Попробуйте позже.", cancellationToken: cancellationToken);
+                }
+                else if (update.CallbackQuery?.Message?.Chat?.Id != null)
+                {
+                     await botClient.SendTextMessageAsync(update.CallbackQuery.Message.Chat.Id, "Произошла внутренняя ошибка при обработке вашего действия. Попробуйте позже.", cancellationToken: cancellationToken);
+                }
+            }
+        }
+
         // This is the ORIGINAL HandleUpdateAsync, renamed to HandleUpdateAsyncOriginal
         static async Task HandleUpdateAsyncOriginal(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
+            // Original handler now only needs to process message updates not handled by new logic
             if (update.Message is not { } message) return;
             if (message.From is not { } user) return;
-            if (message.Text is not { } messageText) return; // Original logic might handle non-text, but course logic doesn't
+            // If it's not a text message, it wouldn't have been handled by _newCourseMessageHandler, so it's fine to process here.
+            // However, _newCourseMessageHandler already checks for Text, so this condition is mainly for non-text messages or if new handler returned false.
+            string messageText = message.Text ?? ""; // Use empty string if null for non-text messages to avoid null ref later
 
             long userId = user.Id;
             long chatId = message.Chat.Id;

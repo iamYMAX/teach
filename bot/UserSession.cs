@@ -51,14 +51,40 @@ namespace Omnieye.Bot.States
         [JsonIgnore] // Not persisted as it's context for current view only
         public string? ViewingLessonTitle { get; set; } = null;
 
-        // Property for tracking the currently selected course module for navigation
-        public string CurrentModuleId { get; set; }
+        // Property for tracking the currently selected course module for navigation (NEW system from JSON)
+        [JsonProperty("current_module_id_for_nav")] // Example of Newtonsoft attribute if needed for persistence
+        public string CurrentModuleIdForNav { get; set; }
 
-        // Properties for Flashcard mode
+        // Property for tracking the currently selected lesson (from JSON) within the CurrentModuleIdForNav
+        [JsonProperty("current_lesson_id_for_context")]
+        public int CurrentLessonIdForContext { get; set; } // Assuming lessonId in JSON is int
+
+        // Cache for the currently loaded module's data (from JSON) - not to be persisted in user session JSON
         [JsonIgnore]
-        public Queue<Flashcard>? FlashcardQueue { get; set; } = null;
+        public OmnieyeBot.Models.ModuleContent CurrentLoadedModuleData { get; set; }
+
+        // Properties for NEW Flashcard mode (uses OmnieyeBot.Models.FlashcardContent)
         [JsonIgnore]
-        public Flashcard? CurrentFlashcard { get; set; } = null;
+        public Queue<OmnieyeBot.Models.FlashcardContent> CurrentFlashcardContentQueue { get; set; }
+        [JsonIgnore]
+        public OmnieyeBot.Models.FlashcardContent CurrentFlashcardContent { get; set; }
+        [JsonIgnore] // To store context like "flashcards_module1_lesson1" or "quiz_module1_lesson1"
+        public string CurrentInteractionContext { get; set; }
+
+        // Properties for NEW Lesson Quiz mode (uses OmnieyeBot.Models.QuizQuestionContent)
+        [JsonIgnore]
+        public List<OmnieyeBot.Models.QuizQuestionContent> CurrentLessonQuizQuestions { get; set; }
+        [JsonIgnore]
+        public int CurrentLessonQuizQuestionIndex { get; set; }
+        [JsonIgnore]
+        public int CurrentLessonQuizScore { get; set; }
+
+
+        // Properties for Flashcard mode (EXISTING system, uses Omnieye.Bot.CoreModels.Flashcard)
+        [JsonIgnore]
+        public Queue<Flashcard>? FlashcardQueue { get; set; } = null; // Old system
+        [JsonIgnore]
+        public Flashcard? CurrentFlashcard { get; set; } = null; // Old system
 
         [JsonConstructor]
         public UserSession(long userId)
