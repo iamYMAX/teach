@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using Telegram.Bot.Types.ReplyMarkups;
-using OmnieyeBot.Models; // Required for CourseModule, Lesson
+using OmnieyeBot.Models; // For CourseModule, Lesson
 
 namespace OmnieyeBot.Keyboards
 {
@@ -14,7 +14,6 @@ namespace OmnieyeBot.Keyboards
             {
                 keyboardButtons.Add(new KeyboardButton[] { $"➡️ Модуль: {module.Title}" });
             }
-            // "Back" from module list goes to Main Menu
             keyboardButtons.Add(new KeyboardButton[] { "⬅️ Назад" });
 
             return new ReplyKeyboardMarkup(keyboardButtons)
@@ -31,7 +30,6 @@ namespace OmnieyeBot.Keyboards
             {
                 keyboardButtons.Add(new KeyboardButton[] { $"➡️ Урок: {lesson.Title}" });
             }
-            // "Back" from lesson list goes to Module List
             keyboardButtons.Add(new KeyboardButton[] { "⬅️ Назад" });
 
             return new ReplyKeyboardMarkup(keyboardButtons)
@@ -42,7 +40,6 @@ namespace OmnieyeBot.Keyboards
 
         public static ReplyKeyboardMarkup GetLessonContentKeyboard()
         {
-            // "Back" from lesson content goes to Lesson List of the current module
             return new ReplyKeyboardMarkup(new[]
             {
                 new KeyboardButton[] { "⬅️ Назад" }

@@ -1,12 +1,11 @@
 using System.Collections.Generic;
-using System.Linq; // Added for FirstOrDefault
+using System.Linq;
 using OmnieyeBot.Models;
 
 namespace OmnieyeBot.Services
 {
     public class CourseService
     {
-        // Static data for now, consider moving to Data/SeedData.cs or loading from JSON
         private static readonly List<CourseModule> _modules = new()
         {
             new CourseModule

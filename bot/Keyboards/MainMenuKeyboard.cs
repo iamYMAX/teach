@@ -9,7 +9,7 @@ namespace OmnieyeBot.Keyboards
             return new ReplyKeyboardMarkup(new[]
             {
                 new KeyboardButton[] { "📘 Уроки" },
-                // Future buttons: "🧠 Карточки", "🏆 Тесты" can be added here
+                // Future buttons can be added here: "🧠 Карточки", "🏆 Тесты"
             })
             {
                 ResizeKeyboard = true

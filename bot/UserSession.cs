@@ -51,6 +51,9 @@ namespace Omnieye.Bot.States
         [JsonIgnore] // Not persisted as it's context for current view only
         public string? ViewingLessonTitle { get; set; } = null;
 
+        // Property for tracking the currently selected course module for navigation
+        public string CurrentModuleId { get; set; }
+
         // Properties for Flashcard mode
         [JsonIgnore]
         public Queue<Flashcard>? FlashcardQueue { get; set; } = null;
