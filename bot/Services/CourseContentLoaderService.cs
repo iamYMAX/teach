@@ -2,127 +2,99 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
-using OmnieyeBot.Models; // For ModuleContent
+using OmnieyeBot.Models; // For CourseStructureRoot
 
 namespace OmnieyeBot.Services
 {
     public class CourseContentLoaderService
     {
-        private readonly string _baseDataPath;
+        private readonly string _courseDataFilePath;
+        private CourseStructureRoot? _cachedCourseStructure; // In-memory cache
+        private DateTime _lastFileWriteTimeUtc; // For cache invalidation
 
-        // Default constructor, assumes "Data" folder in the application's base directory
-        public CourseContentLoaderService()
+        // Default constructor, assumes "Data/course_data.json"
+        public CourseContentLoaderService(string courseFileName = "course_data.json")
         {
-            // Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) might be more robust
-            // but for typical console app structure, AppContext.BaseDirectory is fine.
-            // Ensure this path correctly resolves to the directory containing the "Data" folder.
-            _baseDataPath = Path.Combine(AppContext.BaseDirectory, "Data", "Courses");
-             // Create directory if it doesn't exist (e.g., first run or if manually deleted)
-            if (!Directory.Exists(_baseDataPath))
-            {
-                Directory.CreateDirectory(_baseDataPath);
-                Console.WriteLine($"[CourseContentLoaderService] Created directory: {_baseDataPath}");
-            }
-        }
+            // Base path is where the "Data" folder should reside relative to the application's execution directory
+            string baseDataDirectory = Path.Combine(AppContext.BaseDirectory, "Data");
 
-        // Constructor allowing custom data path (useful for testing or different configurations)
-        public CourseContentLoaderService(string customDataPath)
-        {
-            _baseDataPath = customDataPath; // Assumes customDataPath points directly to the "Courses" folder or equivalent
-            if (!Directory.Exists(_baseDataPath))
+            if (!Directory.Exists(baseDataDirectory))
             {
                 try
                 {
-                    Directory.CreateDirectory(_baseDataPath);
-                    Console.WriteLine($"[CourseContentLoaderService] Created custom directory: {_baseDataPath}");
+                    Directory.CreateDirectory(baseDataDirectory);
+                    Console.WriteLine($"[CourseContentLoaderService] Created base data directory: {baseDataDirectory}");
                 }
                 catch (Exception ex)
                 {
-                     Console.WriteLine($"[CourseContentLoaderService] Error creating custom directory '{_baseDataPath}': {ex.Message}");
-                     // Depending on requirements, might throw or fallback to a default. For now, just logs.
+                     Console.WriteLine($"[CourseContentLoaderService] Error creating base data directory '{baseDataDirectory}': {ex.Message}");
+                     // If this fails, loading will likely fail too.
                 }
             }
+            _courseDataFilePath = Path.Combine(baseDataDirectory, courseFileName);
         }
 
-        public async Task<ModuleContent?> LoadModuleFromFileAsync(string moduleId)
+        public async Task<CourseStructureRoot?> GetOrLoadCourseStructureAsync(bool forceReload = false)
         {
-            if (string.IsNullOrWhiteSpace(moduleId))
+            if (!File.Exists(_courseDataFilePath))
             {
-                Console.WriteLine("[CourseContentLoaderService] Error: Module ID cannot be null or empty.");
+                Console.WriteLine($"[CourseContentLoaderService] Error: Course data file not found at {_courseDataFilePath}");
                 return null;
             }
 
-            // Sanitize moduleId to prevent path traversal issues, although less critical if only reading predefined files.
-            // For now, assume moduleId is clean (e.g., "module1").
-            string fileName = $"{moduleId}.json";
-            string filePath = Path.Combine(_baseDataPath, fileName);
+            DateTime currentFileWriteTimeUtc = File.GetLastWriteTimeUtc(_courseDataFilePath);
 
-            Console.WriteLine($"[CourseContentLoaderService] Attempting to load module from: {filePath}");
-
-            if (!File.Exists(filePath))
+            if (!forceReload && _cachedCourseStructure != null && _lastFileWriteTimeUtc == currentFileWriteTimeUtc)
             {
-                Console.WriteLine($"[CourseContentLoaderService] Error: File not found at {filePath}");
-                return null;
+                Console.WriteLine($"[CourseContentLoaderService] Returning cached course structure. Last loaded: {_lastFileWriteTimeUtc}");
+                return _cachedCourseStructure;
             }
+
+            Console.WriteLine($"[CourseContentLoaderService] Attempting to load course structure from: {_courseDataFilePath}");
 
             try
             {
-                string jsonContent = await File.ReadAllTextAsync(filePath);
+                string jsonContent = await File.ReadAllTextAsync(_courseDataFilePath);
                 if (string.IsNullOrWhiteSpace(jsonContent))
                 {
-                    Console.WriteLine($"[CourseContentLoaderService] Error: File at {filePath} is empty.");
+                    Console.WriteLine($"[CourseContentLoaderService] Error: File at {_courseDataFilePath} is empty.");
+                    _cachedCourseStructure = null; // Invalidate cache on error
                     return null;
                 }
 
                 var options = new JsonSerializerOptions
                 {
-                    PropertyNameCaseInsensitive = true // Good for flexibility if JSON naming varies slightly
+                    PropertyNameCaseInsensitive = true
                 };
 
-                ModuleContent? module = JsonSerializer.Deserialize<ModuleContent>(jsonContent, options);
+                CourseStructureRoot? courseStructure = JsonSerializer.Deserialize<CourseStructureRoot>(jsonContent, options);
 
-                if (module == null)
+                if (courseStructure == null)
                 {
-                    Console.WriteLine($"[CourseContentLoaderService] Error: Failed to deserialize JSON content from {filePath}. Result was null.");
+                    Console.WriteLine($"[CourseContentLoaderService] Error: Failed to deserialize JSON content from {_courseDataFilePath}. Result was null.");
+                    _cachedCourseStructure = null; // Invalidate cache
                 }
                 else
                 {
-                    Console.WriteLine($"[CourseContentLoaderService] Successfully loaded and deserialized module '{module.Title}' (ID: {module.ModuleId}) from {filePath}");
+                    Console.WriteLine($"[CourseContentLoaderService] Successfully loaded and deserialized course structure: '{courseStructure.CourseTitle}' from {_courseDataFilePath}");
+                    _cachedCourseStructure = courseStructure;
+                    _lastFileWriteTimeUtc = currentFileWriteTimeUtc; // Update timestamp for cache
                 }
-                return module;
+                return _cachedCourseStructure;
             }
             catch (JsonException jsonEx)
             {
-                Console.WriteLine($"[CourseContentLoaderService] JSON Deserialization Error for {filePath}: {jsonEx.Message}");
-                if (jsonEx.InnerException != null)
-                {
-                    Console.WriteLine($"Inner Exception: {jsonEx.InnerException.Message}");
-                }
+                Console.WriteLine($"[CourseContentLoaderService] JSON Deserialization Error for {_courseDataFilePath}: {jsonEx.Message}");
+                if (jsonEx.InnerException != null) Console.WriteLine($"Inner Exception: {jsonEx.InnerException.Message}");
+                _cachedCourseStructure = null; // Invalidate cache
                 return null;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[CourseContentLoaderService] General Error loading module from {filePath}: {ex.Message}");
+                Console.WriteLine($"[CourseContentLoaderService] General Error loading course structure from {_courseDataFilePath}: {ex.Message}");
+                _cachedCourseStructure = null; // Invalidate cache
                 return null;
             }
-        }
-
-        // Potentially, a method to list available module IDs (e.g., by scanning file names)
-        public Task<string[]> GetAvailableModuleIdsAsync()
-        {
-            if (!Directory.Exists(_baseDataPath))
-            {
-                 Console.WriteLine($"[CourseContentLoaderService] Data directory not found at {_baseDataPath} when trying to list modules.");
-                return Task.FromResult(Array.Empty<string>());
-            }
-
-            var jsonFiles = Directory.GetFiles(_baseDataPath, "*.json");
-            var moduleIds = jsonFiles
-                .Select(Path.GetFileNameWithoutExtension)
-                .Where(id => !string.IsNullOrWhiteSpace(id)) // Ensure ID is not null/empty after removing extension
-                .ToArray();
-
-            return Task.FromResult(moduleIds!); // Path.GetFileNameWithoutExtension can return null if file name is invalid
         }
     }
 }

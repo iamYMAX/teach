@@ -52,8 +52,11 @@ namespace Omnieye.Bot.States
         public string? ViewingLessonTitle { get; set; } = null;
 
         // Property for tracking the currently selected course module for navigation (NEW system from JSON)
-        [JsonProperty("current_module_id_for_nav")] // Example of Newtonsoft attribute if needed for persistence
-        public string CurrentModuleIdForNav { get; set; }
+        [JsonProperty("current_level_id")] // For storing the ID of the currently selected level
+        public int CurrentLevelId { get; set; } // Assuming levelId in JSON is int
+
+        [JsonProperty("current_module_id_for_nav")] // For storing the ID of the currently selected module (from JSON)
+        public int CurrentModuleIdForNav { get; set; } // Changed to int, assuming moduleId in JSON is int
 
         // Property for tracking the currently selected lesson (from JSON) within the CurrentModuleIdForNav
         [JsonProperty("current_lesson_id_for_context")]
@@ -61,7 +64,7 @@ namespace Omnieye.Bot.States
 
         // Cache for the currently loaded module's data (from JSON) - not to be persisted in user session JSON
         [JsonIgnore]
-        public OmnieyeBot.Models.ModuleContent CurrentLoadedModuleData { get; set; }
+        public OmnieyeBot.Models.ModuleContent CurrentLoadedModuleData { get; set; } // This will hold the ModuleContent for the active module
 
         // Properties for NEW Flashcard mode (uses OmnieyeBot.Models.FlashcardContent)
         [JsonIgnore]

@@ -1,77 +1,67 @@
 using System.Collections.Generic;
 using Telegram.Bot.Types.ReplyMarkups;
-using OmnieyeBot.Models; // For CourseModule, Lesson
+using OmnieyeBot.Models; // For ModuleContent, LessonContent, LevelEntry
 
 namespace OmnieyeBot.Keyboards
 {
     public static class LessonKeyboard
     {
-        public const string ModulePrefix = "Модуль: "; // Emoji removed
-        public const string LessonPrefix = "Урок: ";   // Emoji removed
-        public const string BackButtonText = "Назад";   // Emoji removed
+        public const string LevelPrefix = "Уровень: "; // New prefix for levels
+        public const string ModulePrefix = "Модуль: ";
+        public const string LessonPrefix = "Урок: ";
+        public const string BackButtonText = "Назад";
 
-        // Method to get keyboard for displaying modules loaded from JSON
-        public static ReplyKeyboardMarkup GetModulesKeyboard(List<ModuleContent> modules)
+        public static ReplyKeyboardMarkup GetLevelsKeyboard(List<LevelEntry> levels)
         {
             var keyboardButtons = new List<KeyboardButton[]>();
-
-            foreach (var module in modules)
+            foreach (var level in levels)
             {
-                // Text now includes ID for easier parsing in CommandRouter if needed,
-                // or CommandRouter can rely on exact title match to get ID from service.
-                // For ReplyKeyboardMarkup, parsing text is common.
-                // Example: "➡️ Основы системного администрирования (id:module1)"
-                // For simplicity now, just title. CommandRouter will need to map title back to ID or load all to find.
-                keyboardButtons.Add(new KeyboardButton[] { $"{ModulePrefix}{module.Title}" });
+                // Button text: "Уровень: Junior Admin"
+                // CommandRouter will parse "Junior Admin" and find matching LevelEntry by title
+                keyboardButtons.Add(new KeyboardButton[] { $"{LevelPrefix}{level.Title}" });
             }
-            keyboardButtons.Add(new KeyboardButton[] { BackButtonText });
-
-            return new ReplyKeyboardMarkup(keyboardButtons.ToArray()) // Ensure it's an array
-            {
-                ResizeKeyboard = true
-            };
+            keyboardButtons.Add(new KeyboardButton[] { BackButtonText }); // Back from level list goes to Main Menu (handled by CommandRouter logic)
+            return new ReplyKeyboardMarkup(keyboardButtons.ToArray()) { ResizeKeyboard = true };
         }
 
-        // Method to get keyboard for lessons within a specific module (loaded from JSON)
+        // Renamed from GetModulesKeyboard and updated to take LevelEntry
+        public static ReplyKeyboardMarkup GetModulesInLevelKeyboard(LevelEntry level)
+        {
+            var keyboardButtons = new List<KeyboardButton[]>();
+            foreach (var module in level.Modules)
+            {
+                // Button text: "Модуль: Основы системного администрирования"
+                // CommandRouter will use CurrentLevelId from session and this title to find the module
+                keyboardButtons.Add(new KeyboardButton[] { $"{ModulePrefix}{module.Title}" });
+            }
+            keyboardButtons.Add(new KeyboardButton[] { BackButtonText }); // Back from module list (within a level) goes to Level List
+            return new ReplyKeyboardMarkup(keyboardButtons.ToArray()) { ResizeKeyboard = true };
+        }
+
+        // Parameter type changed to ModuleContent (which is what we cache and use)
         public static ReplyKeyboardMarkup GetLessonsInModuleKeyboard(ModuleContent module)
         {
             var keyboardButtons = new List<KeyboardButton[]>();
-
             foreach (var lesson in module.Lessons)
             {
-                // Example: "➡️ Урок: Кто такой системный администратор (id:1)"
+                // Button text: "Урок: Кто такой системный администратор (id:1)"
                 keyboardButtons.Add(new KeyboardButton[] { $"{LessonPrefix}{lesson.Title} (id:{lesson.LessonId})" });
             }
-            keyboardButtons.Add(new KeyboardButton[] { BackButtonText });
-
-            return new ReplyKeyboardMarkup(keyboardButtons.ToArray()) // Ensure it's an array
-            {
-                ResizeKeyboard = true
-            };
+            keyboardButtons.Add(new KeyboardButton[] { BackButtonText }); // Back from lesson list goes to Module List (for current level)
+            return new ReplyKeyboardMarkup(keyboardButtons.ToArray()) { ResizeKeyboard = true };
         }
 
-        // Keyboard for when viewing lesson content - this one will now use InlineKeyboardMarkup
-        // public static ReplyKeyboardMarkup GetLessonContentReplyKeyboard() // Old Reply version
-        // {
-        //     return new ReplyKeyboardMarkup(new KeyboardButton[][]
-        //     {
-        //         new KeyboardButton[] { BackButtonText }
-        //     })
-        //     {
-        //         ResizeKeyboard = true
-        //     };
-        // }
-
-        // NEW: Inline keyboard after showing lesson content
-        public static InlineKeyboardMarkup GetLessonContentInlineKeyboard(int lessonId, string moduleId)
+        // Updated to include levelId, moduleId, lessonId in callback_data
+        public static InlineKeyboardMarkup GetLessonContentInlineKeyboard(int levelId, int moduleId, int lessonId)
         {
             return new InlineKeyboardMarkup(new[]
             {
-                InlineKeyboardButton.WithCallbackData("🔹 Флеш-карточки", $"flashcards_{moduleId}_{lessonId}"),
-                InlineKeyboardButton.WithCallbackData("🔹 Пройти тест", $"quiz_{moduleId}_{lessonId}")
+                // Example callback_data: "flashcards_1_1_1" (levelId_moduleId_lessonId)
+                InlineKeyboardButton.WithCallbackData("🔹 Флеш-карточки", $"flashcards_{levelId}_{moduleId}_{lessonId}"),
+                InlineKeyboardButton.WithCallbackData("🔹 Пройти тест", $"quiz_{levelId}_{moduleId}_{lessonId}")
+                // "Назад к списку уроков" can be an inline button too, or rely on the ReplyKeyboard "Назад"
+                // InlineKeyboardButton.WithCallbackData("⬅️ К урокам", $"backtolessons_{levelId}_{moduleId}")
             });
-            // "Назад к списку уроков" might be better as a ReplyKeyboard button or a separate inline button row.
-            // For now, focusing on new options. The existing "⬅️ Назад" ReplyKeyboard button will handle going back.
         }
     }
 }
