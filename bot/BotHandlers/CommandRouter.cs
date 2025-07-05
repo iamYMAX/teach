@@ -41,6 +41,7 @@ namespace OmnieyeBot.BotHandlers
 
             Console.WriteLine($"[CommandRouter] Routing message: '{messageText}'");
 
+            // Ensure exact match with MainMenuKeyboard.LessonsButtonText which is now "Уроки"
             if (messageText == "/start")
             {
                 Console.WriteLine("[CommandRouter] Matched /start");
@@ -48,9 +49,9 @@ namespace OmnieyeBot.BotHandlers
                 await HandleStartCommandAsync(chatId, userSession, cancellationToken);
                 return true;
             }
-            else if (messageText == MainMenuKeyboard.LessonsButtonText)
+            else if (messageText == MainMenuKeyboard.LessonsButtonText) // MainMenuKeyboard.LessonsButtonText is now "Уроки"
             {
-                Console.WriteLine($"[CommandRouter] Matched '{MainMenuKeyboard.LessonsButtonText}'");
+                Console.WriteLine($"[CommandRouter] Matched '{MainMenuKeyboard.LessonsButtonText}' (no emoji)");
                 userSession.CurrentModuleIdForNav = null; // Reset module navigation context
                 await HandleShowCourseModulesAsync(chatId, userSession, cancellationToken);
                 return true;
@@ -61,13 +62,13 @@ namespace OmnieyeBot.BotHandlers
                 await HandleBackCommandAsync(chatId, userSession, cancellationToken);
                 return true;
             }
-            else if (messageText.StartsWith(LessonKeyboard.ModulePrefix))
+            else if (messageText.StartsWith(LessonKeyboard.ModulePrefix)) // ModulePrefix is "➡️ Модуль: "
             {
                 Console.WriteLine($"[CommandRouter] Matched Module Prefix '{LessonKeyboard.ModulePrefix}'");
                 await HandleShowLessonsInModuleAsync(chatId, messageText, userSession, cancellationToken);
                 return true;
             }
-            else if (messageText.StartsWith(LessonKeyboard.LessonPrefix))
+            else if (messageText.StartsWith(LessonKeyboard.LessonPrefix)) // LessonPrefix is "➡️ Урок: "
             {
                 Console.WriteLine($"[CommandRouter] Matched Lesson Prefix '{LessonKeyboard.LessonPrefix}'");
                 await HandleShowLessonContentAsync(chatId, messageText, userSession, cancellationToken);

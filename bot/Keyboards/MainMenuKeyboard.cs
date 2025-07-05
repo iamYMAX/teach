@@ -4,7 +4,7 @@ namespace OmnieyeBot.Keyboards
 {
     public static class MainMenuKeyboard
     {
-        public const string LessonsButtonText = "📘 Уроки";
+        public const string LessonsButtonText = "Уроки"; // Emoji removed for testing
         // Add other main menu button texts as consts if needed
 
         public static ReplyKeyboardMarkup GetKeyboard()
