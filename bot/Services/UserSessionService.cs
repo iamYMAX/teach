@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization; // Required for DefaultContractResolver
 using Omnieye.Bot.States; // For UserSession, TestHistoryEntry
+using Omnieye.Bot.CoreModels; // For TestData used in GetUserSession
 
 namespace Omnieye.Bot.Services
 {
