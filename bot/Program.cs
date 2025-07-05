@@ -887,9 +887,7 @@ namespace Omnieye.Bot
                 if (inputHandled) return;
             }
 
-            var parts = messageText.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
-            var command = parts[0].ToLower();
-            var argument = parts.Length > 1 ? parts[1] : null;
+           
 
             if (!session.IsAuthenticated && command != "/login" && command != "/start" && command != "/help")
             {

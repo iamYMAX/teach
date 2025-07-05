@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "TCFoUCFvUc0=",
+  "dgSpecHash": "RThucCrCrwE=",
   "success": true,
-  "projectFilePath": "C:\\Users\\IamSuGOD\\Source\\Repos\\teach\\bot\\Omnieye.Bot.csproj",
+  "projectFilePath": "C:\\Users\\IamSuGOD\\Source\\Repos\\teach3\\bot\\Omnieye.Bot.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\IamSuGOD\\.nuget\\packages\\newtonsoft.json\\13.0.3\\newtonsoft.json.13.0.3.nupkg.sha512",
     "C:\\Users\\IamSuGOD\\.nuget\\packages\\telegram.bot\\19.0.0\\telegram.bot.19.0.0.nupkg.sha512"
