@@ -17,6 +17,7 @@ using Telegram.Bot.Types.ReplyMarkups;
 using System.Text.Json; // Required for JsonSerializer
 using Omnieye.Bot.Models; // Required for Test model if not already there for other reasons
 using System.Timers; // Required for System.Timers.Timer
+using IOFile = System.IO.File;
 
 namespace Omnieye.Bot
 {
@@ -271,6 +272,64 @@ namespace Omnieye.Bot
             }
 
             // Flashcard handling (when in ReviewingFlashcards state)
+            // Place these inside the Program class
+
+            static List<Flashcard> GetFlashcardsByLevel(int userProfileLevel, IEnumerable<Flashcard> allFlashcards)
+            {
+                if (userProfileLevel < 3)
+                    return allFlashcards.Where(f => f.Level == LessonLevel.Beginner).ToList();
+                else if (userProfileLevel < 6)
+                    return allFlashcards.Where(f => f.Level == LessonLevel.Beginner || f.Level == LessonLevel.Intermediate).ToList();
+                else
+                    return allFlashcards.ToList();
+            }
+
+            static async Task ShowNextFlashcardAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+            {
+                if (session.FlashcardQueue == null || session.FlashcardQueue.Count == 0)
+                {
+                    await botClient.SendTextMessageAsync(chatId, "✅ Все карточки просмотрены!", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                    session.EndFlashcardSession();
+                    return;
+                }
+
+                var card = session.FlashcardQueue.Dequeue();
+                session.CurrentFlashcard = card;
+
+                await botClient.SendTextMessageAsync(
+                    chatId,
+                    $"❓ {card.Question}",
+                    replyMarkup: FlashcardQuestionKeyboard,
+                    cancellationToken: ct
+                );
+                session.CurrentState = UserCurrentState.ReviewingFlashcards;
+            }
+
+            static async Task StartFlashcardSessionAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+            {
+                if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+                {
+                    await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем начинать флеш-карточки.", cancellationToken: ct);
+                    await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+                    return;
+                }
+
+                var flashcardsForUser = GetFlashcardsByLevel(session.Profile.Level, allFlashcardsData);
+
+                if (flashcardsForUser == null || !flashcardsForUser.Any())
+                {
+                    await botClient.SendTextMessageAsync(chatId, "Флеш-карточки для вашего уровня пока не добавлены.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                    session.CurrentState = UserCurrentState.MainMenu;
+                    return;
+                }
+
+                var random = new Random();
+                session.FlashcardQueue = new Queue<Flashcard>(flashcardsForUser.OrderBy(x => random.Next()));
+                session.CurrentFlashcard = null;
+
+                await botClient.SendTextMessageAsync(chatId, "Начинаем сессию флеш-карточек!", cancellationToken: ct, replyMarkup: new ReplyKeyboardRemove());
+                await ShowNextFlashcardAsync(botClient, session, chatId, ct);
+            }
             if (session.CurrentState == UserCurrentState.ReviewingFlashcards)
             {
                 bool flashcardActionProcessed = true;
@@ -509,7 +568,7 @@ namespace Omnieye.Bot
 
                 var options = new JsonSerializerOptions { WriteIndented = true };
                 var json = JsonSerializer.Serialize(data, options);
-                await File.WriteAllTextAsync(filePath, json);
+                await IOFile.WriteAllTextAsync(filePath, json);
                 Console.WriteLine($"Data successfully exported to {Path.GetFullPath(filePath)}");
             }
             catch (Exception ex)
@@ -575,7 +634,7 @@ namespace Omnieye.Bot
 
                 var options = new JsonSerializerOptions { WriteIndented = true };
                 var json = JsonSerializer.Serialize(data, options);
-                await File.WriteAllTextAsync(filePath, json);
+                await IOFile.WriteAllTextAsync(filePath, json);
                 Console.WriteLine($"Auto backup successful: Data saved to {Path.GetFullPath(filePath)}");
             }
             catch (Exception ex)
@@ -603,7 +662,7 @@ namespace Omnieye.Bot
             const string importFileName = "omnieye_export.json";
             string filePath = Path.Combine(backupDir, importFileName);
 
-            if (!File.Exists(filePath))
+            if (!IOFile.Exists(filePath))
             {
                 Console.WriteLine($"Import file not found: {Path.GetFullPath(filePath)}. Skipping import.");
                 // Optionally, notify admin
@@ -612,7 +671,7 @@ namespace Omnieye.Bot
 
             try
             {
-                var json = await File.ReadAllTextAsync(filePath);
+                var json = await IOFile.ReadAllTextAsync(filePath);
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true }; // Good practice for deserialization
                 var data = JsonSerializer.Deserialize<BotData>(json, options);
 
@@ -680,7 +739,7 @@ namespace Omnieye.Bot
                         try
                         {
                             var testJson = JsonSerializer.Serialize(firstTest, new JsonSerializerOptions { WriteIndented = true });
-                            await File.WriteAllTextAsync(testFilePath, testJson);
+                            await IOFile.WriteAllTextAsync(testFilePath, testJson);
                             Console.WriteLine($"Successfully updated '{testFilePath}' with the imported test data.");
                             // Optionally, re-initialize _testLoaderService or clear its cache if it has one.
                              _testLoaderService = new TestLoaderService(); // Re-instantiate to pick up changes on next LoadTest() call
