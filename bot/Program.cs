@@ -1007,9 +1007,9 @@ namespace Omnieye.Bot
                 var data = new BotData
                 {
                     Users = users,
-                    ExistingLessons = existingLessons,
-                    ExistingFlashcards = existingFlashcards,
-                    ExistingTests = existingTests,
+                    ExistingLessons = existingLessons, // Correctly uses new name
+                    ExistingFlashcards = existingFlashcards, // Correctly uses new name
+                    ExistingTests = existingTests, // Correctly uses new name
                     AdminPanelLessons = adminPanelLessons,
                     AdminPanelFlashcards = adminPanelFlashcards,
                     AdminPanelTests = adminPanelTests,
@@ -1052,20 +1052,32 @@ namespace Omnieye.Bot
                 }
 
                 var users = _userSessionService.GetAllUserProfiles() ?? new List<UserProfile>();
-                var lessons = allLessonsData ?? new List<Lesson>();
+                var currentExistingLessons = allLessonsData ?? new List<Lesson>(); // Use current state of allLessonsData
+                var currentExistingFlashcards = allFlashcardsData ?? new List<Flashcard>(); // Use current state of allFlashcardsData
 
-                var tests = new List<Omnieye.Bot.Models.Test>();
-                var loadedTest = _testLoaderService.LoadTest();
+                var currentExistingTests = new List<Omnieye.Bot.Models.Test>();
+                var loadedTest = _testLoaderService.LoadTest(); // This reflects the state of tests_junior_admin.json
                 if (loadedTest != null)
                 {
-                    tests.Add(loadedTest);
+                    currentExistingTests.Add(loadedTest);
                 }
+
+                // Admin Panel Content for backup
+                var adminPanelLessons = await _adminService.GetLessonsAsync() ?? new List<AdminLesson>();
+                var adminPanelFlashcards = await _adminService.GetFlashcardsAsync() ?? new List<AdminFlashcard>();
+                var adminPanelTests = await _adminService.GetTestsAsync() ?? new List<AdminTest>();
+                var adminPanelDifficultyLevels = await _adminService.GetDifficultyLevelsAsync() ?? new List<DifficultyLevel>();
 
                 var data = new BotData
                 {
                     Users = users,
-                    Lessons = lessons,
-                    Tests = tests
+                    ExistingLessons = currentExistingLessons,
+                    ExistingFlashcards = currentExistingFlashcards,
+                    ExistingTests = currentExistingTests,
+                    AdminPanelLessons = adminPanelLessons,
+                    AdminPanelFlashcards = adminPanelFlashcards,
+                    AdminPanelTests = adminPanelTests,
+                    AdminPanelDifficultyLevels = adminPanelDifficultyLevels
                 };
 
                 var options = new JsonSerializerOptions { WriteIndented = true };
