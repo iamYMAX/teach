@@ -32,13 +32,17 @@ namespace OmnieyeBot.BotHandlers
             var messageText = message.Text;
             var userSession = _existingUserSessionService.GetUserSession(chatId); // Use corrected field name
 
+            Console.WriteLine($"[CommandRouter] Routing message: '{messageText}'"); // DEBUG LOG
+
             if (messageText == "/start") // Technically /start is often global, but let new system handle it if it wants
             {
+                Console.WriteLine("[CommandRouter] Matched /start"); // DEBUG LOG
                 await HandleStartCommandAsync(chatId, userSession, cancellationToken);
                 return true;
             }
             else if (messageText == "📘 Уроки")
             {
+                Console.WriteLine("[CommandRouter] Matched '📘 Уроки'"); // DEBUG LOG
                 await HandleShowCourseModulesAsync(chatId, userSession, cancellationToken);
                 return true;
             }

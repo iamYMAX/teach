@@ -48,9 +48,12 @@ namespace OmnieyeBot.BotHandlers
 
             // Log can be here or inside CommandRouter if specific to course commands
             // Console.WriteLine($"CourseMessageHandler attempting to handle '{messageText}' in chat {chatId}.");
+            Console.WriteLine($"[MessageHandler] Attempting to route message: '{messageText}' via CommandRouter."); // DEBUG LOG
 
             // Delegate to CommandRouter for processing and return its handling status
-            return await _commandRouter.RouteAsync(message, cancellationToken);
+            bool handled = await _commandRouter.RouteAsync(message, cancellationToken);
+            Console.WriteLine($"[MessageHandler] CommandRouter handled status: {handled} for message: '{messageText}'"); // DEBUG LOG
+            return handled;
         }
     }
 }
