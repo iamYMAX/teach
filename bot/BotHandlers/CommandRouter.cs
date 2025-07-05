@@ -633,5 +633,5 @@ namespace OmnieyeBot.BotHandlers
                 text: "Извините, я не понял эту команду. Пожалуйста, используйте кнопки.",
                 cancellationToken: cancellationToken);
         }
-    }
-}
+    } // End of CommandRouter class
+} // End of OmnieyeBot.BotHandlers namespace
