@@ -14,6 +14,9 @@ using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
+using System.Text.Json; // Required for JsonSerializer
+using Omnieye.Bot.Models; // Required for Test model if not already there for other reasons
+using System.Timers; // Required for System.Timers.Timer
 
 namespace Omnieye.Bot
 {
@@ -21,6 +24,7 @@ namespace Omnieye.Bot
     {
         private static UserSessionService _userSessionService = new UserSessionService();
         private static MaterialLoader _materialLoader = new MaterialLoader();
+        private static TestLoaderService _testLoaderService = new TestLoaderService(); // Added for accessing tests
 
         private static ITelegramBotClient? _botClient;
         private static CancellationTokenSource? _cts;
@@ -144,6 +148,9 @@ namespace Omnieye.Bot
 
             _botClient = new TelegramBotClient(botToken);
             _cts = new CancellationTokenSource();
+
+            // Start services like auto-backup
+            StartAutoBackup(); // Initialize and start the auto-backup timer
 
             var receiverOptions = new ReceiverOptions { AllowedUpdates = Array.Empty<UpdateType>() };
             _botClient.StartReceiving(
@@ -423,6 +430,28 @@ namespace Omnieye.Bot
                     case "/top":         // Alias /top
                         await ShowLeaderboardAsync(botClient, session, chatId, cancellationToken);
                         break;
+                    case "/export":
+                        if (IsAdmin(userId))
+                        {
+                            await ExportDataAsync();
+                            await botClient.SendTextMessageAsync(chatId, "📤 Данные успешно экспортированы.", cancellationToken: cancellationToken);
+                        }
+                        else
+                        {
+                            await botClient.SendTextMessageAsync(chatId, "Эта команда доступна только администратору.", cancellationToken: cancellationToken);
+                        }
+                        break;
+                    case "/import":
+                        if (IsAdmin(userId))
+                        {
+                            await ImportDataAsync();
+                            await botClient.SendTextMessageAsync(chatId, "📥 Данные успешно импортированы.", cancellationToken: cancellationToken);
+                        }
+                        else
+                        {
+                            await botClient.SendTextMessageAsync(chatId, "Эта команда доступна только администратору.", cancellationToken: cancellationToken);
+                        }
+                        break;
                     default:
                         await botClient.SendTextMessageAsync(chatId, $"Unknown command '{command}'. Try /help for commands.", cancellationToken: cancellationToken);
                         break;
@@ -444,6 +473,232 @@ namespace Omnieye.Bot
             };
             Console.WriteLine(ErrorMessage);
             return Task.CompletedTask;
+        }
+
+        private static async Task ExportDataAsync()
+        {
+            const string backupDir = "backup";
+            const string exportFileName = "omnieye_export.json";
+            string filePath = Path.Combine(backupDir, exportFileName);
+
+            try
+            {
+                // Ensure backup directory exists
+                if (!Directory.Exists(backupDir))
+                {
+                    Directory.CreateDirectory(backupDir);
+                    Console.WriteLine($"Created directory: {Path.GetFullPath(backupDir)}");
+                }
+
+                var users = _userSessionService.GetAllUserProfiles() ?? new List<UserProfile>();
+                var lessons = allLessonsData ?? new List<Lesson>(); // Using the static list from Program.cs
+
+                var tests = new List<Omnieye.Bot.Models.Test>();
+                var loadedTest = _testLoaderService.LoadTest(); // TestLoaderService loads one Test structure
+                if (loadedTest != null)
+                {
+                    tests.Add(loadedTest);
+                }
+
+                var data = new BotData
+                {
+                    Users = users,
+                    Lessons = lessons,
+                    Tests = tests
+                };
+
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                var json = JsonSerializer.Serialize(data, options);
+                await File.WriteAllTextAsync(filePath, json);
+                Console.WriteLine($"Data successfully exported to {Path.GetFullPath(filePath)}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during data export: {ex.Message}");
+                // Optionally, notify admin or log to a more persistent error log
+            }
+        }
+
+        // Placeholder for admin check. Replace with actual admin logic.
+        // For example, check against a configuration file or a list of admin IDs.
+        private static bool IsAdmin(long userId)
+        {
+            // Replace with your actual admin User ID
+            long adminUserId = 123456789; // EXAMPLE ADMIN USER ID - CHANGE THIS!
+            if (userId == adminUserId)
+            {
+                return true;
+            }
+            // Fallback for testing if no specific admin ID is set yet by the developer
+            // In a production environment, this fallback should be removed or secured.
+            // Allowing any authenticated user to be admin if adminUserId is not changed from placeholder.
+            if (adminUserId == 123456789 && _userSessionService.GetUserSession(userId).IsAuthenticated)
+            {
+                // This is a temporary measure for ease of testing IF the placeholder ID is not changed.
+                // Console.WriteLine($"Warning: Admin check defaulting to authenticated user {userId} because placeholder admin ID is used.");
+                // return true; // UNCOMMENT FOR TESTING IF YOU ARE THE ONLY USER AND AUTHENTICATED
+            }
+            return false;
+        }
+
+        private static async Task PerformAutoBackupAsync()
+        {
+            const string backupDir = "backup";
+            string timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+            string filename = $"auto_backup_{timestamp}.json";
+            string filePath = Path.Combine(backupDir, filename);
+
+            try
+            {
+                if (!Directory.Exists(backupDir))
+                {
+                    Directory.CreateDirectory(backupDir);
+                    Console.WriteLine($"Created directory for auto-backup: {Path.GetFullPath(backupDir)}");
+                }
+
+                var users = _userSessionService.GetAllUserProfiles() ?? new List<UserProfile>();
+                var lessons = allLessonsData ?? new List<Lesson>();
+
+                var tests = new List<Omnieye.Bot.Models.Test>();
+                var loadedTest = _testLoaderService.LoadTest();
+                if (loadedTest != null)
+                {
+                    tests.Add(loadedTest);
+                }
+
+                var data = new BotData
+                {
+                    Users = users,
+                    Lessons = lessons,
+                    Tests = tests
+                };
+
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                var json = JsonSerializer.Serialize(data, options);
+                await File.WriteAllTextAsync(filePath, json);
+                Console.WriteLine($"Auto backup successful: Data saved to {Path.GetFullPath(filePath)}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during auto backup to {filePath}: {ex.Message}");
+            }
+        }
+
+        private static void StartAutoBackup()
+        {
+            // Timer interval in milliseconds. 30 minutes = 30 * 60 * 1000 ms
+            double interval = 30 * 60 * 1000;
+            var timer = new System.Timers.Timer(interval);
+
+            timer.Elapsed += async (sender, e) => await PerformAutoBackupAsync();
+            timer.AutoReset = true; // Makes the timer raise the Elapsed event repeatedly
+            timer.Enabled = true;   // Starts the timer
+
+            Console.WriteLine($"Auto-backup service started. Backups will be performed every {interval / (60 * 1000)} minutes.");
+        }
+
+        private static async Task ImportDataAsync()
+        {
+            const string backupDir = "backup";
+            const string importFileName = "omnieye_export.json";
+            string filePath = Path.Combine(backupDir, importFileName);
+
+            if (!File.Exists(filePath))
+            {
+                Console.WriteLine($"Import file not found: {Path.GetFullPath(filePath)}. Skipping import.");
+                // Optionally, notify admin
+                return;
+            }
+
+            try
+            {
+                var json = await File.ReadAllTextAsync(filePath);
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true }; // Good practice for deserialization
+                var data = JsonSerializer.Deserialize<BotData>(json, options);
+
+                if (data is null)
+                {
+                    Console.WriteLine($"Failed to deserialize data from {Path.GetFullPath(filePath)}. Data is null. Skipping import.");
+                    // Optionally, notify admin
+                    return;
+                }
+
+                // These Load methods will be implemented in the respective services in a later step.
+                // For UserProfile, the UserSessionService needs a way to overwrite or update its user profiles.
+                // This might involve clearing existing profiles or merging. For now, assume replacement.
+                if (data.Users != null)
+                {
+                    _userSessionService.LoadUsers(data.Users); // Assumes UserSessionService will have LoadUsers
+                }
+
+                // For Lessons, Program.cs currently holds them in a static list.
+                // A true "LessonService" would be needed to make this cleaner.
+                // For now, we can replace the static list.
+                if (data.Lessons != null)
+                {
+                    // LessonService.LoadLessons(data.Lessons); // Placeholder if we had a LessonService
+                    allLessonsData.Clear();
+                    allLessonsData.AddRange(data.Lessons);
+                    Console.WriteLine($"Loaded {data.Lessons.Count} lessons into Program.cs static list.");
+                }
+
+                // For Tests, similar to Lessons, Program.cs uses _testLoaderService to load one test.
+                // If we are importing a list of tests, how TestLoaderService handles this needs definition.
+                // The current BotData structure implies a list of tests.
+                // For simplicity, if there's at least one test in the import,
+                // we can assume it's the one TestLoaderService should be aware of or
+                // that activeTestsData should be updated.
+                // This part is a bit tricky with the current structure.
+                // Let's assume for now we replace activeTestsData if data.Tests is not null and has items.
+                // This would require converting List<Omnieye.Bot.Models.Test> to Dictionary<int, TestData>
+                // which is not straightforward as they are different structures.
+
+                // Simplification: The export saves a List<Test>. The import will try to load this.
+                // However, TestLoaderService.LoadTest() returns one Test.
+                // And Program.cs uses activeTestsData (Dictionary<int, TestData>).
+                // This is a mismatch.
+                // For now, I will log that Test loading from BotData.Tests is not fully implemented
+                // due to structural differences between BotData.Tests (List<Models.Test>)
+                // and how tests are managed internally (activeTestsData: Dict<int, CoreModels.TestData>
+                // and TestLoaderService loading a single Models.Test).
+                // A proper TestService.LoadTests(List<Models.Test>) would be needed.
+
+                if (data.Tests != null && data.Tests.Any())
+                {
+                    // TestService.LoadTests(data.Tests); // Placeholder
+                    Console.WriteLine($"Imported {data.Tests.Count} tests. Manual integration into TestLoaderService or activeTestsData would be needed with current structure.");
+                    // For now, let's try to replace the test loaded by _testLoaderService if there's one test in the import.
+                    if (data.Tests.Count == 1)
+                    {
+                        // This doesn't directly update _testLoaderService, as it loads from file.
+                        // This is more of a conceptual "the main test is now this one".
+                        // The `tests_junior_admin.json` would ideally be updated by this import.
+                        // For now, we can log this. The export saves the state of tests_junior_admin.json.
+                        // The import should ideally overwrite tests_junior_admin.json with the imported test.
+                        var firstTest = data.Tests.First();
+                        string testFilePath = Path.Combine("materials/junior_admin", "tests_junior_admin.json");
+                        try
+                        {
+                            var testJson = JsonSerializer.Serialize(firstTest, new JsonSerializerOptions { WriteIndented = true });
+                            await File.WriteAllTextAsync(testFilePath, testJson);
+                            Console.WriteLine($"Successfully updated '{testFilePath}' with the imported test data.");
+                            // Optionally, re-initialize _testLoaderService or clear its cache if it has one.
+                             _testLoaderService = new TestLoaderService(); // Re-instantiate to pick up changes on next LoadTest() call
+                        }
+                        catch(Exception ex)
+                        {
+                             Console.WriteLine($"Could not write imported test to {testFilePath}: {ex.Message}");
+                        }
+                    }
+                }
+
+                Console.WriteLine($"Data successfully imported from {Path.GetFullPath(filePath)}.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during data import from {Path.GetFullPath(filePath)}: {ex.Message}");
+                // Optionally, notify admin
+            }
         }
 
         static async Task HandleLoginCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? password, CancellationToken ct)

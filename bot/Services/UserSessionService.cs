@@ -169,5 +169,84 @@ namespace Omnieye.Bot.Services
         {
             return _userDataStorageService.LoadAllProfiles();
         }
+
+        public void LoadUsers(List<UserProfile> usersToLoad)
+        {
+            if (usersToLoad == null)
+            {
+                Console.WriteLine("LoadUsers called with null list. No action taken.");
+                return;
+            }
+
+            Console.WriteLine($"Starting user data import. {usersToLoad.Count} users to load.");
+
+            // 1. Clear existing user profile files
+            // We need the storage directory path. UserDataStorageService keeps it private.
+            // For now, we reconstruct it based on its default logic.
+            // A better solution might be a method in UserDataStorageService to clear all data.
+            string storageDirectory;
+            try
+            {
+                string persistenceFolderPathBase = Path.Combine(AppContext.BaseDirectory, "user_data");
+                // Ensure the directory variable matches what UserDataStorageService uses.
+                // UserDataStorageService constructor: storageFolderName = "user_data"
+                // _storageDirectory = Path.Combine(baseDirectory, storageFolderName);
+                storageDirectory = persistenceFolderPathBase;
+
+
+                if (Directory.Exists(storageDirectory))
+                {
+                    var existingProfileFiles = Directory.GetFiles(storageDirectory, "*_profile.json");
+                    Console.WriteLine($"Found {existingProfileFiles.Length} existing profile files to delete in {storageDirectory}.");
+                    foreach (var filePath in existingProfileFiles)
+                    {
+                        try
+                        {
+                            File.Delete(filePath);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error deleting existing profile file {filePath}: {ex.Message}");
+                            // Continue to delete others if possible
+                        }
+                    }
+                    Console.WriteLine("Finished deleting existing profile files.");
+                }
+                else
+                {
+                    Console.WriteLine($"Storage directory {storageDirectory} not found. No existing profiles to delete.");
+                    // Ensure it exists for saving new profiles, UserDataStorageService will do this.
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error accessing or cleaning storage directory for user profiles: {ex.Message}");
+                // Potentially abort the load if cleaning fails critically
+                // For now, we'll proceed to try saving new profiles
+            }
+
+
+            // 2. Save each imported UserProfile
+            foreach (var userProfile in usersToLoad)
+            {
+                if (userProfile != null)
+                {
+                    // Ensure UserId is set, as UserDataStorageService.SaveProfile uses it for filename
+                    if (userProfile.UserId == 0) {
+                        Console.WriteLine($"Warning: Importing a UserProfile with UserId 0. This profile might not be correctly saved or loaded by ID later. Name: {userProfile.Name}");
+                        // Assign a temporary new ID if necessary, or skip? For now, save as is.
+                    }
+                    _userDataStorageService.SaveProfile(userProfile);
+                }
+            }
+            Console.WriteLine($"Finished saving {usersToLoad.Count} imported user profiles.");
+
+            // 3. Clear the in-memory _userSessions cache
+            // This ensures that GetUserSession will reload from the new files.
+            _userSessions.Clear();
+            Console.WriteLine("In-memory user session cache cleared. Sessions will be reloaded on demand.");
+
+            Console.WriteLine("User data import process complete.");
+        }
     }
 }
