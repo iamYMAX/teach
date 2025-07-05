@@ -11,22 +11,22 @@ using Telegram.Bot.Types.ReplyMarkups;
 using OmnieyeBot.Models;
 using OmnieyeBot.Keyboards;
 using Omnieye.Bot.States;
-using OmnieyeBot.Services;
-using Omnieye.Bot.Services;
+using OmnieyeBot.Services; // This namespace contains CourseContentLoaderService
+using ExistingUserSessionService = Omnieye.Bot.Services.UserSessionService; // Alias for clarity
 
 namespace OmnieyeBot.BotHandlers
 {
     public class CommandRouter
     {
         private readonly ITelegramBotClient _botClient;
-        private readonly ExistingUserSessionService _existingUserSessionService; // Renamed for clarity
-        private readonly CourseContentLoaderService _courseContentLoaderService;
+        private readonly ExistingUserSessionService _existingUserSessionService;
+        private readonly CourseContentLoaderService _courseContentLoaderService; // This is OmnieyeBot.Services.CourseContentLoaderService
 
         private CourseStructureRoot? _courseStructureRoot; // Cache for the entire course structure
 
         public CommandRouter(ITelegramBotClient botClient,
-                             ExistingUserSessionService userSessionService,
-                             CourseContentLoaderService courseContentLoaderService)
+                             ExistingUserSessionService userSessionService, // Parameter uses alias
+                             CourseContentLoaderService courseContentLoaderService) // Parameter uses direct type from OmnieyeBot.Services
         {
             _botClient = botClient;
             _existingUserSessionService = userSessionService;
