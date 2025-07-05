@@ -449,6 +449,8 @@ namespace OmnieyeBot.BotHandlers
             userSession.CurrentLessonQuizQuestions = new List<QuizQuestionContent>(lesson.Quiz);
             userSession.CurrentLessonQuizQuestionIndex = 0;
             userSession.CurrentLessonQuizScore = 0;
+            Console.WriteLine($"[CommandRouter-QuizStart] Initialized quiz for Lvl:{levelId},Mod:{moduleId},Les:{lessonId} with {userSession.CurrentLessonQuizQuestions.Count} questions. Current QIndex: {userSession.CurrentLessonQuizQuestionIndex}");
+
 
             await _botClient.SendTextMessageAsync(chatId, $"Начинаем тест по уроку \"{lesson.Title}\"!", cancellationToken: ct);
             await ShowNextQuizQuestionAsync(userSession, chatId, ct);
@@ -486,8 +488,15 @@ namespace OmnieyeBot.BotHandlers
             if (!int.TryParse(parts[4], out int questionIndexFromCallback) ||
                 !int.TryParse(parts[5], out int chosenOptionIndex)) { await _botClient.SendTextMessageAsync(chatId, "Ошибка callback ответа на квиз (неверные ID).", cancellationToken: ct); return; }
 
+            Console.WriteLine($"[CommandRouter-QuizAnswer] CallbackQIndex: {questionIndexFromCallback}, SessionQIndex: {userSession.CurrentLessonQuizQuestionIndex}, QuestionsInSession: {(userSession.CurrentLessonQuizQuestions == null ? "NULL" : userSession.CurrentLessonQuizQuestions.Count.ToString())}, ChosenOption: {chosenOptionIndex}");
+
             if (userSession.CurrentLessonQuizQuestions == null || questionIndexFromCallback != userSession.CurrentLessonQuizQuestionIndex)
-            { await _botClient.SendTextMessageAsync(chatId, "Ошибка: вопрос устарел или сессия теста неактивна.", cancellationToken: ct); return; }
+            {
+                await _botClient.SendTextMessageAsync(chatId, "Ошибка: вопрос устарел или сессия теста неактивна.", cancellationToken: ct);
+                // Optionally, offer to go back or restart
+                await HandleExitQuizCallbackAsync(userSession.CurrentInteractionContext ?? "", userSession, chatId, ct, false); // Exit quiz to avoid stuck state
+                return;
+            }
 
             var question = userSession.CurrentLessonQuizQuestions[userSession.CurrentLessonQuizQuestionIndex];
             string resultEmoji = "❌";
