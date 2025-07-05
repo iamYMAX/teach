@@ -36,7 +36,7 @@ namespace Omnieye.Bot
             { 2, "Урок 2: Основы работы\n\nОписание основных функций и интерфейса." },
             { 3, "Урок 3: Продвинутые возможности\n\nДополнительные настройки и советы." }
         };
-         private static readonly List<string> availableTests_OLD_FORMAT = new List<string>
+        private static readonly List<string> availableTests_OLD_FORMAT = new List<string>
         {
             "Тест 1: Проверка знаний по основам", "Тест 2: Продвинутый тест"
         };
@@ -238,8 +238,10 @@ namespace Omnieye.Bot
                         {
                             var historyEntry = new TestHistoryEntry
                             {
-                                TestId = session.ActiveTestId.Value, TestTitle = currentTestData.TestName,
-                                PassedAt = DateTime.UtcNow, TotalQuestions = currentTestData.Questions.Count,
+                                TestId = session.ActiveTestId.Value,
+                                TestTitle = currentTestData.TestName,
+                                PassedAt = DateTime.UtcNow,
+                                TotalQuestions = currentTestData.Questions.Count,
                                 CorrectAnswers = session.CurrentTestScore
                             };
                             session.TestHistory.Add(historyEntry);
@@ -262,7 +264,62 @@ namespace Omnieye.Bot
                 }
                 return;
             }
+            static List<Flashcard> GetFlashcardsByLevel(int userProfileLevel, IEnumerable<Flashcard> allFlashcards)
+            {
+                if (userProfileLevel < 3)
+                    return allFlashcards.Where(f => f.Level == LessonLevel.Beginner).ToList();
+                else if (userProfileLevel < 6)
+                    return allFlashcards.Where(f => f.Level == LessonLevel.Beginner || f.Level == LessonLevel.Intermediate).ToList();
+                else
+                    return allFlashcards.ToList();
+            }
 
+            static async Task ShowNextFlashcardAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+            {
+                if (session.FlashcardQueue == null || session.FlashcardQueue.Count == 0)
+                {
+                    await botClient.SendTextMessageAsync(chatId, "✅ Все карточки просмотрены!", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                    session.EndFlashcardSession();
+                    return;
+                }
+
+                var card = session.FlashcardQueue.Dequeue();
+                session.CurrentFlashcard = card;
+
+                await botClient.SendTextMessageAsync(
+                    chatId,
+                    $"❓ {card.Question}",
+                    replyMarkup: FlashcardQuestionKeyboard,
+                    cancellationToken: ct
+                );
+                session.CurrentState = UserCurrentState.ReviewingFlashcards;
+            }
+
+            static async Task StartFlashcardSessionAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
+            {
+                if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+                {
+                    await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем начинать флеш-карточки.", cancellationToken: ct);
+                    await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+                    return;
+                }
+
+                var flashcardsForUser = GetFlashcardsByLevel(session.Profile.Level, allFlashcardsData);
+
+                if (flashcardsForUser == null || !flashcardsForUser.Any())
+                {
+                    await botClient.SendTextMessageAsync(chatId, "Флеш-карточки для вашего уровня пока не добавлены.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                    session.CurrentState = UserCurrentState.MainMenu;
+                    return;
+                }
+
+                var random = new Random();
+                session.FlashcardQueue = new Queue<Flashcard>(flashcardsForUser.OrderBy(x => random.Next()));
+                session.CurrentFlashcard = null;
+
+                await botClient.SendTextMessageAsync(chatId, "Начинаем сессию флеш-карточек!", cancellationToken: ct, replyMarkup: new ReplyKeyboardRemove());
+                await ShowNextFlashcardAsync(botClient, session, chatId, ct);
+            }
             // Flashcard handling (when in ReviewingFlashcards state)
             if (session.CurrentState == UserCurrentState.ReviewingFlashcards)
             {
@@ -318,8 +375,8 @@ namespace Omnieye.Bot
                         }
                         break;
                     case "Назад к списку уроков":
-                         await HandleLessonsListAsync(botClient, session, chatId, cancellationToken);
-                         break;
+                        await HandleLessonsListAsync(botClient, session, chatId, cancellationToken);
+                        break;
                     case "Начать тест":
                         if (session.CurrentState == UserCurrentState.ViewingTestDetail && session.ViewingItemId.HasValue) await StartActualTestAsync(botClient, session, chatId, session.ViewingItemId.Value, cancellationToken);
                         else if (session.CurrentState == UserCurrentState.ViewingTestDetail && !session.ViewingItemId.HasValue) await botClient.SendTextMessageAsync(chatId, "Ошибка: не удалось определить, какой тест запустить.", replyMarkup: TestDetailKeyboard, cancellationToken: cancellationToken);
@@ -340,13 +397,15 @@ namespace Omnieye.Bot
                 bool inputHandled = false;
                 if (int.TryParse(messageText, out int selectionNumber) && selectionNumber > 0)
                 {
-                     if (session.CurrentState == UserCurrentState.ViewingLessonList)
+                    if (session.CurrentState == UserCurrentState.ViewingLessonList)
                     {
                         if (selectionNumber > 0 && selectionNumber <= allLessonsData.Count)
                         {
-                             await HandleLessonContentAsync(botClient, session, chatId, allLessonsData[selectionNumber-1], cancellationToken);
-                             inputHandled = true;
-                        } else {
+                            await HandleLessonContentAsync(botClient, session, chatId, allLessonsData[selectionNumber - 1], cancellationToken);
+                            inputHandled = true;
+                        }
+                        else
+                        {
                             await botClient.SendTextMessageAsync(chatId, "Неверный номер урока.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
                             inputHandled = true;
                         }
@@ -404,14 +463,16 @@ namespace Omnieye.Bot
                     case "/test": await HandleTestCommandAsync(botClient, session, chatId, argument, cancellationToken); break;
                     case "/stoptest": await HandleStopTestCommandAsync(botClient, session, chatId, cancellationToken); break;
                     case "/setname":
-                        if (!session.IsAuthenticated) {
+                        if (!session.IsAuthenticated)
+                        {
                             await botClient.SendTextMessageAsync(chatId, "Пожалуйста, сначала авторизуйтесь.", cancellationToken: cancellationToken);
                             break;
                         }
-                        if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
-                             await botClient.SendTextMessageAsync(chatId, "Нельзя менять имя во время прохождения теста. Завершите или остановите тест (/stoptest).", cancellationToken: cancellationToken);
-                             await DisplayCurrentTestQuestionAsync(botClient, session, chatId, cancellationToken);
-                             break;
+                        if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+                        {
+                            await botClient.SendTextMessageAsync(chatId, "Нельзя менять имя во время прохождения теста. Завершите или остановите тест (/stoptest).", cancellationToken: cancellationToken);
+                            await DisplayCurrentTestQuestionAsync(botClient, session, chatId, cancellationToken);
+                            break;
                         }
                         await botClient.SendTextMessageAsync(chatId, "Введите ваше имя:", replyMarkup: new ReplyKeyboardRemove(), cancellationToken: cancellationToken);
                         session.WaitingForNameInput = true;
@@ -448,37 +509,45 @@ namespace Omnieye.Bot
 
         static async Task HandleLoginCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? password, CancellationToken ct)
         {
-            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            {
                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем пытаться войти.", cancellationToken: ct);
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
             }
-            if (session.IsAuthenticated) {
+            if (session.IsAuthenticated)
+            {
                 await botClient.SendTextMessageAsync(chatId, "You are already authenticated.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
                 return;
             }
             string? trimmedPassword = password?.Trim();
-            if (string.IsNullOrWhiteSpace(trimmedPassword)) {
+            if (string.IsNullOrWhiteSpace(trimmedPassword))
+            {
                 await botClient.SendTextMessageAsync(chatId, "Please provide a password. Usage: /login <password>", cancellationToken: ct);
                 return;
             }
-            if (AuthorizationService.Authenticate(session.UserId, trimmedPassword, _userSessionService)) {
+            if (AuthorizationService.Authenticate(session.UserId, trimmedPassword, _userSessionService))
+            {
                 await botClient.SendTextMessageAsync(chatId, "Вы успешно авторизованы.\nВыберите действие:", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
                 session.CurrentState = UserCurrentState.MainMenu;
-            } else {
+            }
+            else
+            {
                 await botClient.SendTextMessageAsync(chatId, "Authentication failed. Invalid password.", cancellationToken: ct);
             }
         }
 
         static async Task HandleLogoutCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
         {
-            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)  {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            {
                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем выходить из системы.", cancellationToken: ct);
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
             }
-            if (!session.IsAuthenticated) {
-                 await botClient.SendTextMessageAsync(chatId, "You are not currently authenticated.", cancellationToken: ct);
+            if (!session.IsAuthenticated)
+            {
+                await botClient.SendTextMessageAsync(chatId, "You are not currently authenticated.", cancellationToken: ct);
                 return;
             }
             AuthorizationService.Logout(session.UserId, _userSessionService);
@@ -544,7 +613,8 @@ namespace Omnieye.Bot
 
         static async Task HandleCoursesCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
         {
-            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            {
                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать курсы.", cancellationToken: ct);
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
@@ -554,12 +624,14 @@ namespace Omnieye.Bot
 
         static async Task HandleLessonCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? argument, CancellationToken ct)
         {
-            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            {
                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать урок.", cancellationToken: ct);
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
             }
-            if (string.IsNullOrWhiteSpace(argument) || !int.TryParse(argument, out int lessonNumber) || lessonNumber <= 0) {
+            if (string.IsNullOrWhiteSpace(argument) || !int.TryParse(argument, out int lessonNumber) || lessonNumber <= 0)
+            {
                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, укажите номер урока. Например: /lesson 1", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
                 session.CurrentState = UserCurrentState.MainMenu;
                 return;
@@ -570,14 +642,15 @@ namespace Omnieye.Bot
             }
             else
             {
-                 await botClient.SendTextMessageAsync(chatId, "Извините, урок с таким номером не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
-                 session.CurrentState = UserCurrentState.ViewingLessonList;
+                await botClient.SendTextMessageAsync(chatId, "Извините, урок с таким номером не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.CurrentState = UserCurrentState.ViewingLessonList;
             }
         }
 
         static async Task HandleTestCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? argument, CancellationToken ct)
         {
-             if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            {
                 await botClient.SendTextMessageAsync(chatId, "Вы уже находитесь в процессе теста. Введите ответ или /stoptest для остановки.", cancellationToken: ct);
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
@@ -628,7 +701,8 @@ namespace Omnieye.Bot
 
             var lessonsToShow = GetAvailableLessonsForUserLevel(session.Profile.Level, allLessonsData);
 
-            if (!lessonsToShow.Any()) {
+            if (!lessonsToShow.Any())
+            {
                 await botClient.SendTextMessageAsync(chatId, "Для вашего уровня пока нет доступных уроков.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
                 session.CurrentState = UserCurrentState.MainMenu;
                 session.LastShownLessonTitles = null;
@@ -688,7 +762,8 @@ namespace Omnieye.Bot
             else
                 testsToList = activeTestsData.Values.ToList();
 
-            if (!testsToList.Any()) {
+            if (!testsToList.Any())
+            {
                 await botClient.SendTextMessageAsync(chatId, "Для вашего уровня пока нет доступных тестов или вы прошли все доступные.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
                 session.CurrentState = UserCurrentState.MainMenu;
                 return;
@@ -839,7 +914,8 @@ namespace Omnieye.Bot
             }
 
             var profile = session.Profile;
-            if (profile.UserId == 0 && session.UserId != 0) {
+            if (profile.UserId == 0 && session.UserId != 0)
+            {
                 profile.UserId = session.UserId;
             }
 
