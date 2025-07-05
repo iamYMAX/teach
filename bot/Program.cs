@@ -167,453 +167,166 @@ namespace Omnieye.Bot
 
         static async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
-            // Handle CallbackQueries first
-            if (update.Type == UpdateType.CallbackQuery)
+            User? user = null;
+            long chatId = 0;
+            UserSession session;
+            string? messageText = null;
+            string? callbackData = null;
+            Message? incomingMessageContext = null; // To access MessageId for callback replies etc.
+            CallbackQuery? cbQuery = null;
+
+            if (update.Type == UpdateType.Message && update.Message != null)
             {
-                if (update.CallbackQuery is not { } callbackQuery) return;
-                if (callbackQuery.From is not { } callbackUser) return;
-                if (callbackQuery.Message is not { } callbackMessage) return; // Ensure message context exists
-
-                long userId = callbackUser.Id;
-                long chatId = callbackMessage.Chat.Id; // Use chat from message for sending replies
-                var session = _userSessionService.GetUserSession(userId);
-                string? callbackData = callbackQuery.Data;
-
-                Console.WriteLine($"Received CallbackQuery '{callbackData}' from User {userId} in Chat {chatId}. State: {session.CurrentState}");
-
-                if (IsAdmin(userId))
-                {
-                    if (callbackData != null && callbackData.StartsWith("admin_edit_lesson_"))
-                    {
-                        string lessonId = callbackData.Substring("admin_edit_lesson_".Length);
-                        session.EditingItemId = lessonId;
-                        session.CurrentState = UserCurrentState.AdminEditingLessonSelectField;
-
-                        var fieldKeyboard = new InlineKeyboardMarkup(new[]
-                        {
-                            new[] { InlineKeyboardButton.WithCallbackData("Название", $"admin_edit_field_title") },
-                            new[] { InlineKeyboardButton.WithCallbackData("Описание", $"admin_edit_field_description") },
-                            new[] { InlineKeyboardButton.WithCallbackData("Содержание", $"admin_edit_field_content") },
-                            new[] { InlineKeyboardButton.WithCallbackData("Уровень", $"admin_edit_field_level") }
-                        });
-
-                        await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId, "Выбран урок. Какое поле редактировать?", replyMarkup: fieldKeyboard, cancellationToken: cancellationToken);
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken); // Acknowledge callback
-                        return; // Callback processed
-                    }
-                    else if (callbackData != null && callbackData.StartsWith("admin_edit_field_") && session.CurrentState == UserCurrentState.AdminEditingLessonSelectField)
-                    {
-                        string fieldToEdit = callbackData.Substring("admin_edit_field_".Length);
-                        session.EditingField = fieldToEdit;
-                        session.CurrentState = UserCurrentState.AdminEditingLessonEnterNewValue;
-
-                        if (fieldToEdit == "level")
-                        {
-                            var levelKeyboard = new ReplyKeyboardMarkup(new[] // Using ReplyKeyboard for this input
-                            {
-                                new[] { new KeyboardButton(LessonLevel.Beginner.ToString()), new KeyboardButton(LessonLevel.Intermediate.ToString()) },
-                                new[] { new KeyboardButton(LessonLevel.Advanced.ToString()) }
-                            }) { ResizeKeyboard = true, OneTimeKeyboard = true };
-                            await botClient.EditMessageReplyMarkupAsync(chatId, callbackMessage.MessageId, replyMarkup: null, cancellationToken: cancellationToken); // Remove inline keyboard
-                            await botClient.SendTextMessageAsync(chatId, $"Выбран урок (ID: {session.EditingItemId?.Substring(0,8)}...). Введите новый уровень:", replyMarkup: levelKeyboard, cancellationToken: cancellationToken);
-                        }
-                        else
-                        {
-                            await botClient.EditMessageReplyMarkupAsync(chatId, callbackMessage.MessageId, replyMarkup: null, cancellationToken: cancellationToken); // Remove inline keyboard
-                            await botClient.SendTextMessageAsync(chatId, $"Выбран урок (ID: {session.EditingItemId?.Substring(0,8)}...). Введите новое значение для поля '{fieldToEdit}':", cancellationToken: cancellationToken);
-                        }
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return; // Callback processed
-                    }
-                    else if (callbackData != null && callbackData.StartsWith("admin_delete_lesson_") && session.CurrentState == UserCurrentState.AdminDeletingLessonSelect)
-                    {
-                        string lessonId = callbackData.Substring("admin_delete_lesson_".Length);
-                        var lessonToDelete = _adminDataService.GetLessonById(lessonId);
-                        if (lessonToDelete == null)
-                        {
-                            await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Урок не найден.", cancellationToken: cancellationToken);
-                            await GoToAdminRoot(botClient, session, chatId, "Ошибка: урок для удаления не найден.", cancellationToken);
-                            return;
-                        }
-
-                        session.EditingItemId = lessonId; // Using EditingItemId to store ID of item to be deleted
-                        var confirmationKeyboard = new InlineKeyboardMarkup(new[]
-                        {
-                            InlineKeyboardButton.WithCallbackData($"Да, удалить \"{lessonToDelete.Title.Substring(0, Math.Min(lessonToDelete.Title.Length, 20))}...\"", $"admin_confirm_delete_lesson_{lessonId}"),
-                            InlineKeyboardButton.WithCallbackData("Нет, отмена", "admin_cancel_delete")
-                        });
-                        await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId, $"Вы уверены, что хотите удалить урок \"{lessonToDelete.Title}\"?", replyMarkup: confirmationKeyboard, cancellationToken: cancellationToken);
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                    else if (callbackData != null && callbackData.StartsWith("admin_confirm_delete_lesson_") && session.CurrentState == UserCurrentState.AdminDeletingLessonSelect)
-                    {
-                        if (string.IsNullOrEmpty(session.EditingItemId) || !callbackData.EndsWith(session.EditingItemId)) // Basic check
-                        {
-                             await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Ошибка подтверждения.", cancellationToken: cancellationToken);
-                             await GoToAdminRoot(botClient, session, chatId, "Ошибка при подтверждении удаления.", cancellationToken);
-                             return;
-                        }
-                        try
-                        {
-                            await _adminDataService.DeleteLesson(session.EditingItemId);
-                            await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId, $"Урок (ID: {session.EditingItemId.Substring(0,8)}...) успешно удален.", cancellationToken: cancellationToken);
-                            await GoToAdminRoot(botClient, session, chatId, "Выберите следующее действие:", cancellationToken);
-                        }
-                        catch (KeyNotFoundException)
-                        {
-                            await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId, "Ошибка: Урок не найден для удаления (возможно, уже удален).", cancellationToken: cancellationToken);
-                            await GoToAdminRoot(botClient, session, chatId, "Выберите следующее действие:", cancellationToken);
-                        }
-                        session.EditingItemId = null;
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                    else if (callbackData == "admin_cancel_delete" && session.CurrentState == UserCurrentState.AdminDeletingLessonSelect)
-                    {
-                        await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId, "Удаление отменено.", cancellationToken: cancellationToken);
-                        await GoToAdminRoot(botClient, session, chatId, "Выберите следующее действие:", cancellationToken);
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                    else if (callbackData != null && callbackData.StartsWith("admin_edit_test_") && session.CurrentState == UserCurrentState.AdminEditingTestSelect)
-                    {
-                        string testId = callbackData.Substring("admin_edit_test_".Length);
-                        var testToEdit = _adminDataService.GetTestById(testId);
-                        if (testToEdit == null)
-                        {
-                            await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Тест не найден.", cancellationToken: cancellationToken);
-                            await GoToAdminRoot(botClient, session, chatId, "Ошибка: тест для редактирования не найден.", cancellationToken);
-                            return;
-                        }
-                        session.EditingItemId = testId; // Store ID of test being edited
-                        session.CurrentState = UserCurrentState.AdminEditingTestSelectField; // Or a new state like AdminEditingTestMainMenu
-
-                        var editTestOptionsKeyboard = new InlineKeyboardMarkup(new[]
-                        {
-                            new[] { InlineKeyboardButton.WithCallbackData("Изменить Название", $"admin_edit_testmeta_title") },
-                            new[] { InlineKeyboardButton.WithCallbackData("Изменить Описание", $"admin_edit_testmeta_description") },
-                            new[] { InlineKeyboardButton.WithCallbackData("Изменить Сложность", $"admin_edit_testmeta_difficulty") },
-                            new[] { InlineKeyboardButton.WithCallbackData("Редактировать Вопросы", $"admin_edit_testquestions_{testId}") }, // Navigate to question editing
-                            new[] { InlineKeyboardButton.WithCallbackData("<< Назад к выбору теста", $"admin_back_to_test_select_for_edit") }
-                        });
-                        await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId, $"Выбран тест: \"{testToEdit.TestName}\". Что вы хотите сделать?", replyMarkup: editTestOptionsKeyboard, cancellationToken: cancellationToken);
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                    else if (callbackData != null && callbackData.StartsWith("admin_edit_testmeta_") && session.CurrentState == UserCurrentState.AdminEditingTestSelectField)
-                    {
-                        string fieldToEdit = callbackData.Substring("admin_edit_testmeta_".Length);
-                        session.EditingField = fieldToEdit; // Store the metadata field to edit (title, description, difficulty)
-                        session.CurrentState = UserCurrentState.AdminEditingTestEnterNewValue; // Re-use state from lesson editing for entering new value
-
-                        if (fieldToEdit == "difficulty")
-                        {
-                            var difficultyKeyboard = new ReplyKeyboardMarkup(new[]
-                            {
-                                new[] { new KeyboardButton(TestDifficulty.Easy.ToString()), new KeyboardButton(TestDifficulty.Medium.ToString()) },
-                                new[] { new KeyboardButton(TestDifficulty.Hard.ToString()) }
-                            }) { ResizeKeyboard = true, OneTimeKeyboard = true };
-                            await botClient.EditMessageReplyMarkupAsync(chatId, callbackMessage.MessageId, replyMarkup: null, cancellationToken: cancellationToken); // Remove inline
-                            await botClient.SendTextMessageAsync(chatId, $"Текущий тест: {session.EditingItemId?.Substring(0,8)}...\nВведите новую сложность:", replyMarkup: difficultyKeyboard, cancellationToken: cancellationToken);
-                        }
-                        else
-                        {
-                             await botClient.EditMessageReplyMarkupAsync(chatId, callbackMessage.MessageId, replyMarkup: null, cancellationToken: cancellationToken); // Remove inline
-                            await botClient.SendTextMessageAsync(chatId, $"Текущий тест: {session.EditingItemId?.Substring(0,8)}...\nВведите новое значение для поля '{fieldToEdit}':", cancellationToken: cancellationToken);
-                        }
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                     else if (callbackData == "admin_back_to_test_select_for_edit" && session.CurrentState == UserCurrentState.AdminEditingTestSelectField)
-                    {
-                        // This will effectively re-trigger the "✏️ Редактировать тест" flow's display part
-                        session.CurrentState = UserCurrentState.AdminRoot; // Go to root to allow re-selection of "Edit Test"
-                        await botClient.DeleteMessageAsync(chatId, callbackMessage.MessageId, cancellationToken); // Clean up the message
-                        // Simulate pressing "Edit Test" again by sending the selection message
-                        // This is a bit of a hack; ideally, this would be a direct state transition + message send.
-                        // For simplicity here, we'll just guide the user back.
-                        // A cleaner way is to have a dedicated method to show the test list for editing.
-                        // For now, let's just send them to admin root and they can click "Edit Test" again.
-                        await GoToAdminRoot(botClient, session, chatId, "Выберите тест для редактирования из списка (нажмите '✏️ Редактировать тест' снова).", cancellationToken);
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                     else if (callbackData != null && callbackData.StartsWith("admin_delete_test_") && session.CurrentState == UserCurrentState.AdminDeletingTestSelect)
-                    {
-                        string testId = callbackData.Substring("admin_delete_test_".Length);
-                        var testToDelete = _adminDataService.GetTestById(testId);
-                        if (testToDelete == null)
-                        {
-                            await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Тест не найден.", cancellationToken: cancellationToken);
-                            await GoToAdminRoot(botClient, session, chatId, "Ошибка: тест для удаления не найден.", cancellationToken);
-                            return;
-                        }
-
-                        session.EditingItemId = testId; // Re-use for item to be deleted
-                        var confirmationKeyboard = new InlineKeyboardMarkup(new[]
-                        {
-                            InlineKeyboardButton.WithCallbackData($"Да, удалить \"{testToDelete.TestName.Substring(0, Math.Min(testToDelete.TestName.Length, 20))}...\"", $"admin_confirm_delete_test_{testId}"),
-                            InlineKeyboardButton.WithCallbackData("Нет, отмена", "admin_cancel_delete_test") // Specific cancel for test
-                        });
-                        await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId, $"Вы уверены, что хотите удалить тест \"{testToDelete.TestName}\"?", replyMarkup: confirmationKeyboard, cancellationToken: cancellationToken);
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                    else if (callbackData != null && callbackData.StartsWith("admin_confirm_delete_test_") && session.CurrentState == UserCurrentState.AdminDeletingTestSelect)
-                    {
-                        if (string.IsNullOrEmpty(session.EditingItemId) || !callbackData.EndsWith(session.EditingItemId))
-                        {
-                             await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Ошибка подтверждения.", cancellationToken: cancellationToken);
-                             await GoToAdminRoot(botClient, session, chatId, "Ошибка при подтверждении удаления теста.", cancellationToken);
-                             return;
-                        }
-                        try
-                        {
-                            await _adminDataService.DeleteTest(session.EditingItemId);
-                            await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId, $"Тест (ID: {session.EditingItemId.Substring(0,8)}...) успешно удален.", cancellationToken: cancellationToken);
-                            await GoToAdminRoot(botClient, session, chatId, "Выберите следующее действие:", cancellationToken);
-                        }
-                        catch (KeyNotFoundException)
-                        {
-                            await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId, "Ошибка: Тест не найден для удаления (возможно, уже удален).", cancellationToken: cancellationToken);
-                            await GoToAdminRoot(botClient, session, chatId, "Выберите следующее действие:", cancellationToken);
-                        }
-                        session.EditingItemId = null;
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                    else if (callbackData == "admin_cancel_delete_test" && session.CurrentState == UserCurrentState.AdminDeletingTestSelect)
-                    {
-                        await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId, "Удаление теста отменено.", cancellationToken: cancellationToken);
-                        await GoToAdminRoot(botClient, session, chatId, "Выберите следующее действие:", cancellationToken);
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                    else if (callbackData != null && callbackData.StartsWith("admin_edit_testquestions_") && session.CurrentState == UserCurrentState.AdminEditingTestSelectField)
-                    {
-                        string testId = callbackData.Substring("admin_edit_testquestions_".Length);
-                        // session.EditingItemId should already be set to this testId from the previous step
-                        if (session.EditingItemId != testId)
-                        {
-                            // Mismatch, something went wrong or state is inconsistent
-                            await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Ошибка: ID теста не совпадает.", cancellationToken: cancellationToken);
-                            await GoToAdminRoot(botClient, session, chatId, "Произошла ошибка при выборе теста для редактирования вопросов.", cancellationToken);
-                            return;
-                        }
-
-                        var testToEdit = _adminDataService.GetTestById(testId);
-                        if (testToEdit == null)
-                        {
-                            await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Тест не найден.", cancellationToken: cancellationToken);
-                            await GoToAdminRoot(botClient, session, chatId, "Ошибка: тест для редактирования вопросов не найден.", cancellationToken);
-                            return;
-                        }
-
-                        session.CurrentState = UserCurrentState.AdminEditingTestQuestionSelect; // New state for managing questions of a test
-
-                        var qKeyboard = new List<IEnumerable<InlineKeyboardButton>>();
-                        qKeyboard.Add(new[] { InlineKeyboardButton.WithCallbackData("Добавить новый вопрос к этому тесту", $"admin_add_qst_to_test_{testId}") });
-
-                        if (testToEdit.Questions.Any())
-                        {
-                            for(int i=0; i < testToEdit.Questions.Count; i++)
-                            {
-                                var q = testToEdit.Questions[i];
-                                string qTextShort = q.Text.Length > 30 ? q.Text.Substring(0, 27) + "..." : q.Text;
-                                qKeyboard.Add(new[] {
-                                    InlineKeyboardButton.WithCallbackData($"✏️ {i+1}. {qTextShort}", $"admin_edit_existing_qst_{testId}_{i}"), // Pass testId and questionIndex
-                                    InlineKeyboardButton.WithCallbackData($"🗑️ Удалить", $"admin_delete_existing_qst_{testId}_{i}")
-                                });
-                            }
-                        }
-                        else
-                        {
-                             qKeyboard.Add(new[] { InlineKeyboardButton.WithCallbackData("Вопросов пока нет.", "admin_no_op") });
-                        }
-                        qKeyboard.Add(new[] { InlineKeyboardButton.WithCallbackData("<< Назад к редактированию теста", $"admin_edit_test_{testId}") }); // Go back to test metadata edit
-
-                        await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId,
-                            $"Редактирование вопросов для теста: \"{testToEdit.TestName}\"\nВсего вопросов: {testToEdit.Questions.Count}",
-                            replyMarkup: new InlineKeyboardMarkup(qKeyboard), cancellationToken: cancellationToken);
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                    else if (callbackData != null && callbackData.StartsWith("admin_add_qst_to_test_") && session.CurrentState == UserCurrentState.AdminEditingTestQuestionSelect)
-                    {
-                        string testId = callbackData.Substring("admin_add_qst_to_test_".Length);
-                        if (session.EditingItemId != testId) { /* Error handling */ return; }
-
-                        session.PendingQuestion = new QuestionData();
-                        session.CurrentState = UserCurrentState.AdminAddingTestQuestionText; // Re-use this state
-                        // Important: We need a way to know that after this question is added, we return to question list, not "ask more"
-                        // For now, the AdminAddingTestQuestionCorrectOption handler will need to check if EditingItemId is set.
-                        // If EditingItemId is set, it means we are adding a question to an existing test.
-                        await botClient.EditMessageReplyMarkupAsync(chatId, callbackMessage.MessageId, replyMarkup: null, cancellationToken: cancellationToken); // Clear inline keyboard
-                        await botClient.SendTextMessageAsync(chatId, "Введите текст нового вопроса для этого теста:", replyMarkup: new ReplyKeyboardRemove(), cancellationToken: cancellationToken);
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                    else if (callbackData != null && callbackData.StartsWith("admin_edit_existing_qst_") && session.CurrentState == UserCurrentState.AdminEditingTestQuestionSelect)
-                    {
-                        // Format: admin_edit_existing_qst_{testId}_{questionIndex}
-                        var parts = callbackData.Split('_');
-                        if (parts.Length < 5) { /* Error */ return; } // Should be 5 parts: admin, edit, existing, qst, testIdAndIndex
-
-                        string testId = parts[4]; // Assuming testId does not contain underscores
-                        // If testId can contain underscores, parsing needs to be more robust.
-                        // For now, assuming testId is the 4th part and questionIndex is the 5th if it were testId_questionIndex
-                        // Let's refine: admin_edit_existing_qst_TESTID_INDEX
-                        // So parts[0]=admin, parts[1]=edit, parts[2]=existing, parts[3]=qst, parts[4]=TESTID, parts[5]=INDEX
-
-                        // A safer way: find last underscore for index, and the one before that for testId start
-                        int lastUnderscore = callbackData.LastIndexOf('_');
-                        if (lastUnderscore == -1 || lastUnderscore == callbackData.Length -1) { /* Error */ return;}
-                        if (!int.TryParse(callbackData.Substring(lastUnderscore + 1), out int qIndex)) { /* Error */ return; }
-
-                        string prefix = "admin_edit_existing_qst_";
-                        string testIdFromCallback = callbackData.Substring(prefix.Length, lastUnderscore - prefix.Length);
-
-                        if (session.EditingItemId != testIdFromCallback) { /* Error: Test ID mismatch */ return; }
-
-                        var test = _adminDataService.GetTestById(testIdFromCallback);
-                        if (test == null || qIndex < 0 || qIndex >= test.Questions.Count) { /* Error: Test or question not found */ return; }
-
-                        session.EditingQuestionIndex = qIndex;
-                        var questionToEdit = test.Questions[qIndex];
-                        session.CurrentState = UserCurrentState.AdminEditingTestQuestionEditField; // New state for selecting WHICH part of question to edit
-
-                        var editQuestionPartKeyboard = new InlineKeyboardMarkup(new[]
-                        {
-                            new[] { InlineKeyboardButton.WithCallbackData("Текст вопроса", $"admin_edit_qstpart_text_{testIdFromCallback}_{qIndex}") },
-                            new[] { InlineKeyboardButton.WithCallbackData("Варианты ответов", $"admin_edit_qstpart_options_{testIdFromCallback}_{qIndex}") },
-                            new[] { InlineKeyboardButton.WithCallbackData("Правильный ответ", $"admin_edit_qstpart_correct_{testIdFromCallback}_{qIndex}") },
-                            new[] { InlineKeyboardButton.WithCallbackData("<< Назад к списку вопросов", $"admin_edit_testquestions_{testIdFromCallback}")}
-                        });
-
-                        await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId,
-                            $"Редактирование вопроса {qIndex+1}: \"{questionToEdit.Text.Substring(0, Math.Min(questionToEdit.Text.Length,30))}...\"\nЧто изменить?",
-                            replyMarkup: editQuestionPartKeyboard, cancellationToken: cancellationToken);
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                    else if (callbackData != null && callbackData.StartsWith("admin_edit_qstpart_") && session.CurrentState == UserCurrentState.AdminEditingTestQuestionEditField)
-                    {
-                        // Format: admin_edit_qstpart_{type}_{testId}_{questionIndex}
-                        var parts = callbackData.Split('_'); // admin, edit, qstpart, type, testId, qIndex
-                        if (parts.Length < 6) { /* Error */ return; }
-                        string type = parts[3];
-                        string testId = parts[4];
-                        if (!int.TryParse(parts[5], out int qIndex)) { /* Error */ return;}
-
-                        if (session.EditingItemId != testId || session.EditingQuestionIndex != qIndex) { /* Error: Mismatch */ return;}
-
-                        session.EditingField = $"question_{type}"; // e.g., question_text, question_options
-                        session.CurrentState = UserCurrentState.AdminEditingTestQuestionEnterNewValue;
-
-                        string prompt = "";
-                        IReplyMarkup? replyMarkup = new ReplyKeyboardRemove();
-
-                        switch(type)
-                        {
-                            case "text":
-                                prompt = "Введите новый текст вопроса:";
-                                break;
-                            case "options":
-                                prompt = "Введите новые варианты ответа через запятую (например: ОпцияА,ОпцияБ,ОпцияВ):";
-                                break;
-                            case "correct":
-                                var test = _adminDataService.GetTestById(testId);
-                                if (test != null && qIndex < test.Questions.Count)
-                                {
-                                    var q = test.Questions[qIndex];
-                                    var optionsText = string.Join("\n", q.Options.Select((opt, idx) => $"{idx + 1}. {opt}"));
-                                    prompt = $"Текущие варианты:\n{optionsText}\n\nВведите НОВЫЙ номер правильного варианта (начиная с 1):";
-                                } else { prompt = "Введите НОВЫЙ номер правильного варианта (начиная с 1):"; }
-                                break;
-                            default: // Should not happen
-                                await GoToAdminRoot(botClient, session, chatId, "Неизвестное поле для редактирования вопроса.",cancellationToken);
-                                return;
-                        }
-                        await botClient.EditMessageReplyMarkupAsync(chatId, callbackMessage.MessageId, replyMarkup: null, cancellationToken: cancellationToken); // Remove inline keyboard
-                        await botClient.SendTextMessageAsync(chatId, prompt, replyMarkup: replyMarkup, cancellationToken: cancellationToken);
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
-                        return;
-                    }
-                    else if (callbackData != null && callbackData.StartsWith("admin_delete_existing_qst_") && session.CurrentState == UserCurrentState.AdminEditingTestQuestionSelect)
-                    {
-                        // Format: admin_delete_existing_qst_{testId}_{questionIndex}
-                        int lastUnderscore = callbackData.LastIndexOf('_');
-                        if (lastUnderscore == -1 || lastUnderscore == callbackData.Length -1) { /* Error */ return;}
-                        if (!int.TryParse(callbackData.Substring(lastUnderscore + 1), out int qIndex)) { /* Error */ return; }
-
-                        string prefix = "admin_delete_existing_qst_";
-                        string testId = callbackData.Substring(prefix.Length, lastUnderscore - prefix.Length);
-
-                        if (session.EditingItemId != testId) { /* Error: Test ID mismatch */ return; }
-
-                        var test = _adminDataService.GetTestById(testId);
-                        if (test == null || qIndex < 0 || qIndex >= test.Questions.Count) { /* Error: Test or question not found */ return; }
-
-                        var questionToDelete = test.Questions[qIndex];
-                        // Confirmation for deleting a question could be added here with another callback step,
-                        // but for simplicity now, let's delete directly. If UX requires confirmation, this needs expansion.
-
-                        test.Questions.RemoveAt(qIndex);
-                        await _adminDataService.UpdateTest(test);
-
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, $"Вопрос \"{questionToDelete.Text.Substring(0, Math.Min(questionToDelete.Text.Length, 20))}...\" удален.", cancellationToken: cancellationToken);
-
-                        // Refresh question list
-                        var qKeyboardRefresh = new List<IEnumerable<InlineKeyboardButton>>();
-                        qKeyboardRefresh.Add(new[] { InlineKeyboardButton.WithCallbackData("Добавить новый вопрос к этому тесту", $"admin_add_qst_to_test_{test.Id}") });
-                        if (test.Questions.Any())
-                        {
-                            for(int i=0; i < test.Questions.Count; i++)
-                            {
-                                var q = test.Questions[i];
-                                string qTextShort = q.Text.Length > 30 ? q.Text.Substring(0, 27) + "..." : q.Text;
-                                qKeyboardRefresh.Add(new[] {
-                                    InlineKeyboardButton.WithCallbackData($"✏️ {i+1}. {qTextShort}", $"admin_edit_existing_qst_{test.Id}_{i}"),
-                                    InlineKeyboardButton.WithCallbackData($"🗑️ Удалить", $"admin_delete_existing_qst_{test.Id}_{i}")
-                                });
-                            }
-                        } else { qKeyboardRefresh.Add(new[] { InlineKeyboardButton.WithCallbackData("Вопросов пока нет.", "admin_no_op") }); }
-                        qKeyboardRefresh.Add(new[] { InlineKeyboardButton.WithCallbackData("<< Назад к редактированию теста", $"admin_edit_test_{test.Id}") });
-
-                        await botClient.EditMessageTextAsync(chatId, callbackMessage.MessageId,
-                            $"Редактирование вопросов для теста: \"{test.TestName}\"\nВсего вопросов: {test.Questions.Count}",
-                            replyMarkup: new InlineKeyboardMarkup(qKeyboardRefresh), cancellationToken: cancellationToken);
-                        // No return here, let it fall through to AnswerCallbackQueryAsync if not handled.
-                    }
+                incomingMessageContext = update.Message;
+                user = incomingMessageContext.From;
+                chatId = incomingMessageContext.Chat.Id;
+                messageText = incomingMessageContext.Text;
+            }
+            else if (update.Type == UpdateType.CallbackQuery && update.CallbackQuery != null)
+            {
+                cbQuery = update.CallbackQuery;
+                user = cbQuery.From;
+                if (cbQuery.Message == null) {
+                    Console.WriteLine("CallbackQuery without a message context received. Cannot process.");
+                    if(!string.IsNullOrEmpty(cbQuery.Id)) await botClient.AnswerCallbackQueryAsync(cbQuery.Id, "Ошибка: нет контекста сообщения.", cancellationToken: cancellationToken);
+                    return;
                 }
-                // Fallback or other callback query handling if necessary
-                // Ensure AnswerCallbackQueryAsync is always called for any callback.
-                if(callbackQuery!=null && !string.IsNullOrEmpty(callbackQuery.Id) && !callbackQuery.IsAcknowledged()) await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Действие не обработано.", cancellationToken: cancellationToken);
-                return;
+                incomingMessageContext = cbQuery.Message;
+                chatId = incomingMessageContext.Chat.Id;
+                callbackData = cbQuery.Data;
             }
 
-            if (update.Message is not { } message) return;
-            if (message.From is not { } user) return;
-            // messageText can be null for non-text messages, handle accordingly or check type.
-            // For this bot, we primarily expect text messages after this point.
-            if (message.Text is not { } messageText)
+            if (user == null || chatId == 0) // Ensure essential context
             {
-                // If it's not a text message and not a callback, ignore or handle specific non-text types if needed.
-                // For example, if the bot expects photos, documents, etc.
-                // For now, if not text and not callback, we assume it's not meant for standard processing.
-                Console.WriteLine($"Received non-text message type {message.Type} from User {user.Id}. Ignoring.");
+                Console.WriteLine($"Update type {update.Type} without sufficient User/Chat context. Ignoring.");
+                if(cbQuery?.Id != null) await botClient.AnswerCallbackQueryAsync(cbQuery.Id, "Ошибка контекста.", cancellationToken: cancellationToken);
                 return;
             }
 
+            session = _userSessionService.GetUserSession(user.Id);
 
-            long userId_msg = user.Id; // Renamed to avoid conflict with callback's userId if scopes were nested differently
-            long chatId_msg = message.Chat.Id; // Renamed
-            var session_msg = _userSessionService.GetUserSession(userId_msg); // Renamed
+            // 1. Handle Callback Queries
+            if (update.Type == UpdateType.CallbackQuery && cbQuery != null && incomingMessageContext != null)
+            {
+                Console.WriteLine($"Received CallbackQuery '{callbackData}' from User {user.Id} in Chat {chatId}. State: {session.CurrentState}");
+                bool callbackHandledInAdminBlock = false;
+                if (IsAdmin(user.Id))
+                {
+                    // ADMIN CALLBACKS
+                    // Lesson Edit
+                    if (callbackData != null && callbackData.StartsWith("admin_edit_lesson_")) {
+                        string lessonId = callbackData.Substring("admin_edit_lesson_".Length);
+                        session.EditingItemId = lessonId; session.CurrentState = UserCurrentState.AdminEditingLessonSelectField;
+                        var kbd = new InlineKeyboardMarkup(new[] { new[] { InlineKeyboardButton.WithCallbackData("Название", $"admin_edit_field_title") }, new[] { InlineKeyboardButton.WithCallbackData("Описание", $"admin_edit_field_description") }, new[] { InlineKeyboardButton.WithCallbackData("Содержание", $"admin_edit_field_content") }, new[] { InlineKeyboardButton.WithCallbackData("Уровень", $"admin_edit_field_level") } });
+                        await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, "Выбран урок. Какое поле редактировать?", replyMarkup: kbd, cancellationToken: cancellationToken);
+                        callbackHandledInAdminBlock = true;
+                    } else if (callbackData != null && callbackData.StartsWith("admin_edit_field_") && session.CurrentState == UserCurrentState.AdminEditingLessonSelectField) {
+                        string fieldToEdit = callbackData.Substring("admin_edit_field_".Length);
+                        session.EditingField = fieldToEdit; session.CurrentState = UserCurrentState.AdminEditingLessonEnterNewValue;
+                        await botClient.EditMessageReplyMarkupAsync(chatId, incomingMessageContext.MessageId, replyMarkup: null, cancellationToken: cancellationToken); // Remove inline
+                        if (fieldToEdit == "level") {
+                            var kbd = new ReplyKeyboardMarkup(new[] { new[] { new KeyboardButton(LessonLevel.Beginner.ToString()), new KeyboardButton(LessonLevel.Intermediate.ToString()) }, new[] { new KeyboardButton(LessonLevel.Advanced.ToString()) }}) { ResizeKeyboard = true, OneTimeKeyboard = true };
+                            await botClient.SendTextMessageAsync(chatId, $"Урок (ID: {session.EditingItemId?.Substring(0,Math.Min(8, session.EditingItemId?.Length ?? 0) )}...). Нов. уровень:", replyMarkup: kbd, cancellationToken: cancellationToken);
+                        } else { await botClient.SendTextMessageAsync(chatId, $"Урок (ID: {session.EditingItemId?.Substring(0,Math.Min(8, session.EditingItemId?.Length ?? 0) )}...). Нов. значение для '{fieldToEdit}':", cancellationToken: cancellationToken); }
+                        callbackHandledInAdminBlock = true;
+                    }
+                    // Lesson Delete
+                    else if (callbackData != null && callbackData.StartsWith("admin_delete_lesson_") && session.CurrentState == UserCurrentState.AdminDeletingLessonSelect) { /* ... as before ... */
+                        string lessonId = callbackData.Substring("admin_delete_lesson_".Length); var lesson = _adminDataService.GetLessonById(lessonId);
+                        if (lesson != null) { session.EditingItemId = lessonId; var kbd = new InlineKeyboardMarkup(new[] { InlineKeyboardButton.WithCallbackData($"Да, удалить \"{lesson.Title.Substring(0, Math.Min(20, lesson.Title.Length))}...\"", $"admin_confirm_delete_lesson_{lessonId}"), InlineKeyboardButton.WithCallbackData("Нет", "admin_cancel_delete") }); await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, $"Удалить урок \"{lesson.Title}\"?", replyMarkup: kbd, cancellationToken: cancellationToken); }
+                        else { await GoToAdminRoot(botClient, session, chatId, "Ошибка: урок не найден.", cancellationToken); }
+                        callbackHandledInAdminBlock = true;
+                    } else if (callbackData != null && callbackData.StartsWith("admin_confirm_delete_lesson_") && session.CurrentState == UserCurrentState.AdminDeletingLessonSelect) { /* ... */
+                        if (!string.IsNullOrEmpty(session.EditingItemId) && callbackData.EndsWith(session.EditingItemId)) { try { await _adminDataService.DeleteLesson(session.EditingItemId); await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, "Урок удален.", cancellationToken: cancellationToken); } catch (KeyNotFoundException) { await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, "Ошибка: Урок не найден.", cancellationToken: cancellationToken); } await GoToAdminRoot(botClient, session, chatId, "Выберите действие:", cancellationToken); }
+                        else { await GoToAdminRoot(botClient, session, chatId, "Ошибка подтверждения.", cancellationToken); } session.EditingItemId = null;
+                        callbackHandledInAdminBlock = true;
+                    } else if (callbackData == "admin_cancel_delete" && session.CurrentState == UserCurrentState.AdminDeletingLessonSelect) { /* ... */
+                        await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, "Удаление отменено.", cancellationToken: cancellationToken); await GoToAdminRoot(botClient, session, chatId, "Выберите действие:", cancellationToken);
+                        callbackHandledInAdminBlock = true;
+                    }
+                    // Test Edit (Metadata & Navigation)
+                    else if (callbackData != null && callbackData.StartsWith("admin_edit_test_") && session.CurrentState == UserCurrentState.AdminEditingTestSelect) { /* ... */
+                        string testId = callbackData.Substring("admin_edit_test_".Length); var test = _adminDataService.GetTestById(testId);
+                        if (test != null) { session.EditingItemId = testId; session.CurrentState = UserCurrentState.AdminEditingTestSelectField; var kbd = new InlineKeyboardMarkup(new[] { new[] { InlineKeyboardButton.WithCallbackData("Название", $"admin_edit_testmeta_title") }, new[] { InlineKeyboardButton.WithCallbackData("Описание", $"admin_edit_testmeta_description") }, new[] { InlineKeyboardButton.WithCallbackData("Сложность", $"admin_edit_testmeta_difficulty") }, new[] { InlineKeyboardButton.WithCallbackData("Вопросы", $"admin_edit_testquestions_{testId}") }, new[] { InlineKeyboardButton.WithCallbackData("<< Назад", $"admin_back_to_test_select_for_edit") } }); await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, $"Тест: \"{test.TestName}\". Что изменить?", replyMarkup: kbd, cancellationToken: cancellationToken); }
+                        else { await GoToAdminRoot(botClient, session, chatId, "Ошибка: тест не найден.", cancellationToken); }
+                        callbackHandledInAdminBlock = true;
+                    } else if (callbackData != null && callbackData.StartsWith("admin_edit_testmeta_") && session.CurrentState == UserCurrentState.AdminEditingTestSelectField) { /* ... */
+                        string field = callbackData.Substring("admin_edit_testmeta_".Length); session.EditingField = field; session.CurrentState = UserCurrentState.AdminEditingTestEnterNewValue;
+                        await botClient.EditMessageReplyMarkupAsync(chatId, incomingMessageContext.MessageId, replyMarkup: null, cancellationToken: cancellationToken);
+                        if (field == "difficulty") { var kbd = new ReplyKeyboardMarkup(new[] { new[] { new KeyboardButton(TestDifficulty.Easy.ToString()),new KeyboardButton(TestDifficulty.Medium.ToString())}, new[] {new KeyboardButton(TestDifficulty.Hard.ToString())}}) { ResizeKeyboard = true, OneTimeKeyboard = true }; await botClient.SendTextMessageAsync(chatId, $"Тест (ID: {session.EditingItemId?.Substring(0,Math.Min(8, session.EditingItemId?.Length??0))}...). Нов. сложность:", replyMarkup: kbd, cancellationToken: cancellationToken); }
+                        else { await botClient.SendTextMessageAsync(chatId, $"Тест (ID: {session.EditingItemId?.Substring(0,Math.Min(8, session.EditingItemId?.Length??0))}...). Нов. значение для '{field}':", cancellationToken: cancellationToken); }
+                        callbackHandledInAdminBlock = true;
+                    } else if (callbackData == "admin_back_to_test_select_for_edit" && session.CurrentState == UserCurrentState.AdminEditingTestSelectField) { /* ... */
+                        session.CurrentState = UserCurrentState.AdminRoot; await botClient.DeleteMessageAsync(chatId, incomingMessageContext.MessageId, cancellationToken);
+                        await GoToAdminRoot(botClient, session, chatId, "Выберите тест (нажмите '✏️ Ред. тест').", cancellationToken);
+                        callbackHandledInAdminBlock = true;
+                    }
+                    // Test Delete
+                     else if (callbackData != null && callbackData.StartsWith("admin_delete_test_") && session.CurrentState == UserCurrentState.AdminDeletingTestSelect) { /* ... */
+                        string testId = callbackData.Substring("admin_delete_test_".Length); var test = _adminDataService.GetTestById(testId);
+                        if (test != null) { session.EditingItemId = testId; var kbd = new InlineKeyboardMarkup(new[] { InlineKeyboardButton.WithCallbackData($"Да, удалить \"{test.TestName.Substring(0,Math.Min(20,test.TestName.Length))}...\"", $"admin_confirm_delete_test_{testId}"), InlineKeyboardButton.WithCallbackData("Нет", "admin_cancel_delete_test") }); await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, $"Удалить тест \"{test.TestName}\"?", replyMarkup: kbd, cancellationToken: cancellationToken); }
+                        else { await GoToAdminRoot(botClient, session, chatId, "Ошибка: тест не найден.", cancellationToken); }
+                        callbackHandledInAdminBlock = true;
+                    } else if (callbackData != null && callbackData.StartsWith("admin_confirm_delete_test_") && session.CurrentState == UserCurrentState.AdminDeletingTestSelect) { /* ... */
+                        if (!string.IsNullOrEmpty(session.EditingItemId) && callbackData.EndsWith(session.EditingItemId)) { try { await _adminDataService.DeleteTest(session.EditingItemId); await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, "Тест удален.", cancellationToken: cancellationToken); } catch (KeyNotFoundException) { await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, "Ошибка: Тест не найден.", cancellationToken: cancellationToken); } await GoToAdminRoot(botClient, session, chatId, "Выберите действие:", cancellationToken); }
+                        else { await GoToAdminRoot(botClient, session, chatId, "Ошибка подтверждения.", cancellationToken); } session.EditingItemId = null;
+                        callbackHandledInAdminBlock = true;
+                    } else if (callbackData == "admin_cancel_delete_test" && session.CurrentState == UserCurrentState.AdminDeletingTestSelect) { /* ... */
+                        await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, "Удаление теста отменено.", cancellationToken: cancellationToken); await GoToAdminRoot(botClient, session, chatId, "Выберите действие:", cancellationToken);
+                        callbackHandledInAdminBlock = true;
+                    }
+                    // Test Question Management
+                    else if (callbackData != null && callbackData.StartsWith("admin_edit_testquestions_") && session.CurrentState == UserCurrentState.AdminEditingTestSelectField) { /* ... */
+                        string testId = callbackData.Substring("admin_edit_testquestions_".Length); if (session.EditingItemId != testId) { await GoToAdminRoot(botClient, session, chatId, "Ошибка ID теста.", cancellationToken); return; } var test = _adminDataService.GetTestById(testId);
+                        if (test != null) { session.CurrentState = UserCurrentState.AdminEditingTestQuestionSelect; var kbd = new List<IEnumerable<InlineKeyboardButton>> { new[] { InlineKeyboardButton.WithCallbackData("Добавить вопрос", $"admin_add_qst_to_test_{testId}") } }; if (test.Questions.Any()) { for(int i=0; i<test.Questions.Count; i++) { var q = test.Questions[i]; string qs = q.Text.Length > 30 ? q.Text.Substring(0,27)+"..." : q.Text; kbd.Add(new[] { InlineKeyboardButton.WithCallbackData($"✏️ {i+1}. {qs}", $"admin_edit_existing_qst_{testId}_{i}"), InlineKeyboardButton.WithCallbackData($"🗑️", $"admin_delete_existing_qst_{testId}_{i}") });}} else { kbd.Add(new[] { InlineKeyboardButton.WithCallbackData("Вопросов нет", "admin_no_op") });} kbd.Add(new[] { InlineKeyboardButton.WithCallbackData("<< Назад", $"admin_edit_test_{testId}") }); await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, $"Вопросы теста: \"{test.TestName}\"", replyMarkup: new InlineKeyboardMarkup(kbd), cancellationToken: cancellationToken); }
+                        else { await GoToAdminRoot(botClient, session, chatId, "Тест не найден.", cancellationToken); }
+                        callbackHandledInAdminBlock = true;
+                    } else if (callbackData != null && callbackData.StartsWith("admin_add_qst_to_test_") && session.CurrentState == UserCurrentState.AdminEditingTestQuestionSelect) { /* ... */
+                        string testId = callbackData.Substring("admin_add_qst_to_test_".Length); if(session.EditingItemId != testId) return; session.PendingQuestion = new QuestionData(); session.CurrentState = UserCurrentState.AdminAddingTestQuestionText;
+                        await botClient.EditMessageReplyMarkupAsync(chatId, incomingMessageContext.MessageId, replyMarkup:null, cancellationToken: cancellationToken); await botClient.SendTextMessageAsync(chatId, "Текст нового вопроса:", replyMarkup: new ReplyKeyboardRemove(), cancellationToken: cancellationToken);
+                        callbackHandledInAdminBlock = true;
+                    } else if (callbackData != null && callbackData.StartsWith("admin_edit_existing_qst_") && session.CurrentState == UserCurrentState.AdminEditingTestQuestionSelect) { /* ... */
+                        var p = callbackData.Split('_'); if(p.Length <6) return; string tId=p[4]; if(!int.TryParse(p[5], out int qIdx)) return; if(session.EditingItemId!=tId) return; var t = _adminDataService.GetTestById(tId);
+                        if (t!=null && qIdx >=0 && qIdx < t.Questions.Count) { session.EditingQuestionIndex = qIdx; session.CurrentState = UserCurrentState.AdminEditingTestQuestionEditField; var q = t.Questions[qIdx]; var kbd = new InlineKeyboardMarkup(new[] {new[] {InlineKeyboardButton.WithCallbackData("Текст", $"admin_edit_qstpart_text_{tId}_{qIdx}")}, new[] {InlineKeyboardButton.WithCallbackData("Варианты", $"admin_edit_qstpart_options_{tId}_{qIdx}")}, new[] {InlineKeyboardButton.WithCallbackData("Прав. ответ", $"admin_edit_qstpart_correct_{tId}_{qIdx}")}, new[] {InlineKeyboardButton.WithCallbackData("<< Назад", $"admin_edit_testquestions_{tId}")} }); await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, $"Вопрос {qIdx+1}: \"{q.Text.Substring(0,Math.Min(30,q.Text.Length))}...\". Что изменить?", replyMarkup:kbd,cancellationToken:cancellationToken); }
+                        callbackHandledInAdminBlock = true;
+                    } else if (callbackData != null && callbackData.StartsWith("admin_edit_qstpart_") && session.CurrentState == UserCurrentState.AdminEditingTestQuestionEditField) { /* ... */
+                        var p = callbackData.Split('_'); if(p.Length<6) return; string type=p[3]; string tId=p[4]; if(!int.TryParse(p[5], out int qIdx)) return; if(session.EditingItemId!=tId || session.EditingQuestionIndex!=qIdx) return;
+                        session.EditingField = $"question_{type}"; session.CurrentState = UserCurrentState.AdminEditingTestQuestionEnterNewValue; string prompt="";
+                        switch(type){ case "text": prompt="Новый текст вопроса:"; break; case "options": prompt="Новые варианты через запятую:"; break;
+                            case "correct": var t = _adminDataService.GetTestById(tId); if(t!=null && qIdx < t.Questions.Count){var q=t.Questions[qIdx]; var otxt = string.Join("\n",q.Options.Select((o,i)=>$"{i+1}. {o}")); prompt=$"Варианты:\n{otxt}\n\nНовый номер прав. ответа:";}else{prompt="Нов. номер прав. ответа:";} break;
+                            default: await GoToAdminRoot(botClient, session, chatId, "Неизвестное поле.", cancellationToken); return;}
+                        await botClient.EditMessageReplyMarkupAsync(chatId, incomingMessageContext.MessageId, replyMarkup:null, cancellationToken:cancellationToken); await botClient.SendTextMessageAsync(chatId, prompt, replyMarkup: new ReplyKeyboardRemove(), cancellationToken:cancellationToken);
+                        callbackHandledInAdminBlock = true;
+                    } else if (callbackData != null && callbackData.StartsWith("admin_delete_existing_qst_") && session.CurrentState == UserCurrentState.AdminEditingTestQuestionSelect) { /* ... */
+                        var p = callbackData.Split('_'); if(p.Length <6) return; string tId=p[4]; if(!int.TryParse(p[5], out int qIdx)) return; if(session.EditingItemId!=tId) return;
+                        var t = _adminDataService.GetTestById(tId);
+                        if (t!=null && qIdx>=0 && qIdx < t.Questions.Count) { var qDel=t.Questions[qIdx]; t.Questions.RemoveAt(qIdx); await _adminDataService.UpdateTest(t); await botClient.AnswerCallbackQueryAsync(cbQuery.Id, $"Вопрос удален.",cancellationToken:cancellationToken); callbackHandledInAdminBlock=true;
+                            var kbdList = new List<IEnumerable<InlineKeyboardButton>> { new[] { InlineKeyboardButton.WithCallbackData("Добавить вопрос", $"admin_add_qst_to_test_{t.Id}") } }; if (t.Questions.Any()) { for(int i=0; i < t.Questions.Count; i++) { var q = t.Questions[i]; string qs = q.Text.Length > 30 ? q.Text.Substring(0, 27) + "..." : q.Text; kbdList.Add(new[] { InlineKeyboardButton.WithCallbackData($"✏️ {i+1}. {qs}", $"admin_edit_existing_qst_{t.Id}_{i}"), InlineKeyboardButton.WithCallbackData($"🗑️", $"admin_delete_existing_qst_{t.Id}_{i}") }); } } else { kbdList.Add(new[] { InlineKeyboardButton.WithCallbackData("Вопросов нет", "admin_no_op") }); } kbdList.Add(new[] { InlineKeyboardButton.WithCallbackData("<< Назад", $"admin_edit_test_{t.Id}") }); await botClient.EditMessageTextAsync(chatId, incomingMessageContext.MessageId, $"Вопросы теста: \"{t.TestName}\"", replyMarkup: new InlineKeyboardMarkup(kbdList), cancellationToken:cancellationToken);
+                        }
+                    } else if (callbackData == "admin_no_op") { /* Acknowledge no-op button press */ callbackHandledInAdminBlock = true; }
+                }
 
-            Console.WriteLine($"Received '{messageText}' from User {userId_msg} in Chat {chatId_msg}. State: {session_msg.CurrentState}, WaitingForName: {session_msg.WaitingForNameInput}");
+                if (!string.IsNullOrEmpty(cbQuery.Id) && !callbackHandledInAdminBlock) // Acknowledge if not handled by admin logic or if not admin
+                {
+                     await botClient.AnswerCallbackQueryAsync(cbQuery.Id, "Действие обработано или нет прав.", cancellationToken: cancellationToken);
+                }
+                 else if (!string.IsNullOrEmpty(cbQuery.Id) && callbackHandledInAdminBlock) // If handled by admin, acknowledge silently or with specific message if needed
+                {
+                    await botClient.AnswerCallbackQueryAsync(cbQuery.Id, cancellationToken: cancellationToken);
+                }
+                return;
+            }
 
-            if (session_msg.WaitingForNameInput)
+            // --- Message Processing Starts Here (if not a callback or callback was not fully handling) ---
+            if (update.Type != UpdateType.Message || messageText == null)
+            {
+                if (update.Message != null) Console.WriteLine($"Ignoring non-text message type {update.Message.Type} from User {user.Id}.");
+                return;
+            }
+
+            Console.WriteLine($"Received '{messageText}' from User {user.Id} in Chat {chatId}. State: {session.CurrentState}, WaitingForName: {session.WaitingForNameInput}");
+
+            if (session.WaitingForNameInput)
             {
                 if (messageText.StartsWith("/"))
                 {
@@ -1539,7 +1252,7 @@ namespace Omnieye.Bot
                             await botClient.SendTextMessageAsync(chatId, "Пожалуйста, сначала авторизуйтесь.", cancellationToken: cancellationToken);
                             break;
                         }
-                        if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+                        if (session.CurrentState == UserCurrentState.TakingTest && !string.IsNullOrEmpty(session.ActiveTestId)) {
                              await botClient.SendTextMessageAsync(chatId, "Нельзя менять имя во время прохождения теста. Завершите или остановите тест (/stoptest).", cancellationToken: cancellationToken);
                              await DisplayCurrentTestQuestionAsync(botClient, session, chatId, cancellationToken);
                              break;
@@ -1835,7 +1548,7 @@ namespace Omnieye.Bot
 
         static async Task HandleLoginCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? password, CancellationToken ct)
         {
-            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+            if (session.CurrentState == UserCurrentState.TakingTest && !string.IsNullOrEmpty(session.ActiveTestId)) {
                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем пытаться войти.", cancellationToken: ct);
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
@@ -1859,7 +1572,7 @@ namespace Omnieye.Bot
 
         static async Task HandleLogoutCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
         {
-            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)  {
+            if (session.CurrentState == UserCurrentState.TakingTest && !string.IsNullOrEmpty(session.ActiveTestId))  {
                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем выходить из системы.", cancellationToken: ct);
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
@@ -1878,7 +1591,7 @@ namespace Omnieye.Bot
             var messages = new List<string> { "Welcome to Omnieye Certification Bot! Use /courses to see available courses, or /help for more commands." };
             if (!session.IsAuthenticated) messages.Add("Please use /login <password> to access content.");
 
-            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            if (session.CurrentState == UserCurrentState.TakingTest && !string.IsNullOrEmpty(session.ActiveTestId))
             {
                 await botClient.SendTextMessageAsync(chatId, "Вы находитесь в процессе теста. Введите ответ или /stoptest для остановки.", cancellationToken: ct);
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
@@ -1899,7 +1612,7 @@ namespace Omnieye.Bot
             var messages = new List<string> { "Available commands:" };
             IReplyMarkup? currentKeyboard = null;
 
-            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            if (session.CurrentState == UserCurrentState.TakingTest && !string.IsNullOrEmpty(session.ActiveTestId))
             {
                 messages.Add("Вы находитесь в процессе теста.");
                 messages.Add("Выберите вариант ответа кнопкой или введите /stoptest для остановки теста.");
@@ -1931,7 +1644,7 @@ namespace Omnieye.Bot
 
         static async Task HandleCoursesCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
         {
-            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+            if (session.CurrentState == UserCurrentState.TakingTest && !string.IsNullOrEmpty(session.ActiveTestId)) {
                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать курсы.", cancellationToken: ct);
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
@@ -1941,42 +1654,84 @@ namespace Omnieye.Bot
 
         static async Task HandleLessonCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? argument, CancellationToken ct)
         {
-            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+            if (session.CurrentState == UserCurrentState.TakingTest && !string.IsNullOrEmpty(session.ActiveTestId)) { // Check string ActiveTestId
                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать урок.", cancellationToken: ct);
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
             }
-            if (string.IsNullOrWhiteSpace(argument) || !int.TryParse(argument, out int lessonNumber) || lessonNumber <= 0) {
-                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, укажите номер урока. Например: /lesson 1", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
-                session.CurrentState = UserCurrentState.MainMenu;
+
+            if (string.IsNullOrWhiteSpace(argument))
+            {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, укажите номер или название урока.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.CurrentState = UserCurrentState.MainMenu; // Or ViewingLessonList
                 return;
             }
-            if (lessonNumber > 0 && lessonNumber <= allLessonsData.Count)
+
+            var allLessons = _adminDataService.GetAllLessons();
+            Lesson? lessonToView = null;
+
+            if (int.TryParse(argument, out int lessonNumber) && lessonNumber > 0 && lessonNumber <= allLessons.Count)
             {
-                await HandleLessonContentAsync(botClient, session, chatId, allLessonsData[lessonNumber - 1], ct);
+                // Assuming lessons are displayed in a consistent order that allows selection by number
+                lessonToView = allLessons[lessonNumber - 1];
             }
             else
             {
-                 await botClient.SendTextMessageAsync(chatId, "Извините, урок с таким номером не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
-                 session.CurrentState = UserCurrentState.ViewingLessonList;
+                // Try to find by title (case-insensitive)
+                lessonToView = allLessons.FirstOrDefault(l => l.Title.Equals(argument.Trim(), StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (lessonToView != null)
+            {
+                await HandleLessonContentAsync(botClient, session, chatId, lessonToView.Id, ct);
+            }
+            else
+            {
+                 await botClient.SendTextMessageAsync(chatId, "Извините, урок с таким номером или названием не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                 session.CurrentState = UserCurrentState.ViewingLessonList; // Or MainMenu
             }
         }
 
         static async Task HandleTestCommandAsync(ITelegramBotClient botClient, UserSession session, long chatId, string? argument, CancellationToken ct)
         {
-             if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+            if (session.CurrentState == UserCurrentState.TakingTest && !string.IsNullOrEmpty(session.ActiveTestId)) { // Check string ActiveTestId
                 await botClient.SendTextMessageAsync(chatId, "Вы уже находитесь в процессе теста. Введите ответ или /stoptest для остановки.", cancellationToken: ct);
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
                 return;
             }
-            if (string.IsNullOrWhiteSpace(argument) || !int.TryParse(argument, out int testIdToStart) || testIdToStart <= 0)
+
+            if (string.IsNullOrWhiteSpace(argument))
             {
-                await HandleTestsListAsync(botClient, session, chatId, ct);
-                await botClient.SendTextMessageAsync(chatId, "Чтобы начать конкретный тест командой, введите /test <номер_теста>.", cancellationToken: ct);
+                await HandleTestsListAsync(botClient, session, chatId, ct); // Show list if no arg
+                await botClient.SendTextMessageAsync(chatId, "Чтобы начать конкретный тест командой, введите /test <номер_теста_из_списка_или_ID>.", cancellationToken: ct);
                 return;
             }
-            await StartActualTestAsync(botClient, session, chatId, testIdToStart, ct);
+
+            TestData? testToStart = null;
+            var allTests = _adminDataService.GetAllTests();
+
+            if (int.TryParse(argument, out int testNumberToList) && session.LastShownTestList != null && testNumberToList > 0 && testNumberToList <= session.LastShownTestList.Count)
+            {
+                // User provided a number from the last shown list
+                testToStart = session.LastShownTestList[testNumberToList - 1];
+            }
+            else
+            {
+                // User provided an ID or name (treat argument as ID first, then try name if not found by ID)
+                testToStart = _adminDataService.GetTestById(argument) ?? allTests.FirstOrDefault(t => t.TestName.Equals(argument.Trim(), StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (testToStart != null)
+            {
+                await StartActualTestAsync(botClient, session, chatId, testToStart.Id, ct);
+            }
+            else
+            {
+                await HandleTestsListAsync(botClient, session, chatId, ct);
+                await botClient.SendTextMessageAsync(chatId, "Тест с таким номером/ID/названием не найден.", cancellationToken: ct);
+            }
         }
+
 
         static List<Lesson> GetAvailableLessonsForUserLevel(int userProfileLevel, IEnumerable<Lesson> allLessons)
         {
@@ -2006,7 +1761,7 @@ namespace Omnieye.Bot
 
         static async Task HandleLessonsListAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
         {
-            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue)
+            if (session.CurrentState == UserCurrentState.TakingTest && !string.IsNullOrEmpty(session.ActiveTestId)) // Corrected: Was !string.IsNullOrEmpty(session.ActiveTestId) already, which is fine.
             {
                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать уроки.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
@@ -2029,10 +1784,10 @@ namespace Omnieye.Bot
             {
                 var icon = GetLessonDifficultyIcon(lesson.Level);
                 messageBuilder.AppendLine($"{icon} *{lesson.Title}*");
-                messageBuilder.AppendLine($"_{lesson.Summary}_");
+                messageBuilder.AppendLine($"_{lesson.Description}_"); // Corrected from Summary
                 messageBuilder.AppendLine();
             }
-            messageBuilder.AppendLine("👉 Напиши точное название урока из списка, чтобы открыть его.");
+            messageBuilder.AppendLine("👉 Напиши номер или точное название урока из списка, чтобы открыть его (e.g., `/lesson 1` or `/lesson Название урока`).");
 
             await SendLongMessageAsync(botClient, chatId, messageBuilder.ToString(), ct, MainCommandKeyboard, parseMode: ParseMode.Markdown);
             session.CurrentState = UserCurrentState.ViewingLessonList;
