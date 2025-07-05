@@ -41,16 +41,52 @@ namespace Omnieye.Bot // Matching existing file's namespace
         private static CancellationTokenSource? _cts;
 
         // --- Existing static fields for keyboards, lessons, tests data (keeping them for now) ---
-        private static readonly List<string> availableLessons_OLD_FORMAT = new List<string> { /* ... */ };
-        private static readonly Dictionary<int, string> lessonDetails_OLD_FORMAT = new Dictionary<int, string> { /* ... */ };
-        private static readonly List<string> availableTests_OLD_FORMAT = new List<string> { /* ... */ };
-        private static readonly Dictionary<int, string> testDetails = new Dictionary<int, string> { /* ... */ };
-        private static readonly ReplyKeyboardMarkup MainCommandKeyboard = new ReplyKeyboardMarkup(new[] { /* ... */ }) { ResizeKeyboard = true };
-        private static readonly ReplyKeyboardMarkup LessonDetailKeyboard = new ReplyKeyboardMarkup(new[] { /* ... */ }) { ResizeKeyboard = true };
-        private static readonly ReplyKeyboardMarkup TestDetailKeyboard = new ReplyKeyboardMarkup(new[] { /* ... */ }) { ResizeKeyboard = true };
-        private static readonly ReplyKeyboardMarkup AfterTestMenuKeyboard = new ReplyKeyboardMarkup(new[] { /* ... */ }) { ResizeKeyboard = true, OneTimeKeyboard = true };
-        private static readonly ReplyKeyboardMarkup FlashcardQuestionKeyboard = new ReplyKeyboardMarkup(new[] { /* ... */ }) { ResizeKeyboard = true };
-        private static readonly Dictionary<int, TestData> activeTestsData = new Dictionary<int, TestData> { /* ... */ };
+        private static readonly List<string> availableLessons_OLD_FORMAT = new List<string> { "Урок 1: Введение в систему", "Урок 2: Основы работы", "Урок 3: Продвинутые возможности" };
+        private static readonly Dictionary<int, string> lessonDetails_OLD_FORMAT = new Dictionary<int, string> { { 1, "Урок 1: Введение в систему\n\nЗдесь рассказывается об основах работы с ботом и системой." }, { 2, "Урок 2: Основы работы\n\nОписание основных функций и интерфейса." }, { 3, "Урок 3: Продвинутые возможности\n\nДополнительные настройки и советы." } };
+        private static readonly List<string> availableTests_OLD_FORMAT = new List<string> { "Тест 1: Проверка знаний по основам", "Тест 2: Продвинутый тест" };
+        private static readonly Dictionary<int, string> testDetails_full = new Dictionary<int, string> { { 1, "Тест 1: Проверка знаний по основам\n\nВключает вопросы по базовым темам." }, { 2, "Тест 2: Продвинутый тест\n\nСложные вопросы для опытных пользователей." } }; // Renamed from testDetails to avoid conflict if any
+        private static readonly ReplyKeyboardMarkup MainCommandKeyboard = new ReplyKeyboardMarkup(new KeyboardButton[][] // Explicitly KeyboardButton[][]
+        {
+            new KeyboardButton[] { new KeyboardButton("📘 Уроки"), new KeyboardButton("🧪 Тесты") },
+            new KeyboardButton[] { new KeyboardButton("🧠 Флеш-карточки"), new KeyboardButton("История") },
+            new KeyboardButton[] { new KeyboardButton("🏆 Топ"), new KeyboardButton("👤 Профиль") },
+            new KeyboardButton[] { new KeyboardButton("🔐 Выйти") }
+        })
+        {
+            ResizeKeyboard = true
+        };
+        private static readonly ReplyKeyboardMarkup LessonDetailKeyboard = new ReplyKeyboardMarkup(new KeyboardButton[][] // Explicitly KeyboardButton[][]
+        {
+            new KeyboardButton[] { "Назад к списку уроков" }
+        })
+        {
+            ResizeKeyboard = true
+        };
+        private static readonly ReplyKeyboardMarkup TestDetailKeyboard = new ReplyKeyboardMarkup(new KeyboardButton[][] // Explicitly KeyboardButton[][]
+        {
+            new KeyboardButton[] { "Начать тест", "Назад" }
+        })
+        {
+            ResizeKeyboard = true
+        };
+        private static readonly ReplyKeyboardMarkup AfterTestMenuKeyboard = new ReplyKeyboardMarkup(new KeyboardButton[][] // Explicitly KeyboardButton[][]
+        {
+            new KeyboardButton[] { "Вернуться в меню" }
+        })
+        {
+            ResizeKeyboard = true,
+            OneTimeKeyboard = true
+        };
+        private static readonly ReplyKeyboardMarkup FlashcardQuestionKeyboard = new ReplyKeyboardMarkup(new KeyboardButton[][] // Explicitly KeyboardButton[][]
+        {
+            new KeyboardButton[] { new KeyboardButton("Показать ответ") },
+            new KeyboardButton[] { new KeyboardButton("Следующая карточка") },
+            new KeyboardButton[] { new KeyboardButton("↩ Меню") }
+        })
+        {
+            ResizeKeyboard = true
+        };
+        private static readonly Dictionary<int, TestData> activeTestsData_full = new Dictionary<int, TestData> { /* ... */ }; // Renamed from activeTestsData
         private static readonly List<Lesson> allLessonsData = new List<Lesson> { /* ... */ }; // This is Omnieye.Bot.CoreModels.Lesson
         private static readonly List<Flashcard> allFlashcardsData = new List<Flashcard> { /* ... */ };
         // --- End of existing static fields ---

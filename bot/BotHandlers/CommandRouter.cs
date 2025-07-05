@@ -5,31 +5,32 @@ using System.Threading.Tasks;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using OmnieyeBot.Services;
 using OmnieyeBot.Models;
 using OmnieyeBot.Keyboards;
-using Omnieye.Bot.States; // Required for the existing UserSession class
+using Omnieye.Bot.States; // Required for the existing Omnieye.Bot.States.UserSession class
+using OmnieyeBot.Services; // For the new CourseService
+using Omnieye.Bot.Services; // For the existing UserSessionService
 
 namespace OmnieyeBot.BotHandlers
 {
     public class CommandRouter
     {
         private readonly ITelegramBotClient _botClient;
-        private readonly CourseService _courseService;
-        private readonly UserSessionService _userSessionService; // This is the existing service
+        private readonly OmnieyeBot.Services.CourseService _newCourseService; // Explicitly new service
+        private readonly Omnieye.Bot.Services.UserSessionService _existingUserSessionService; // Explicitly existing service
 
-        public CommandRouter(ITelegramBotClient botClient, CourseService courseService, UserSessionService userSessionService)
+        public CommandRouter(ITelegramBotClient botClient, OmnieyeBot.Services.CourseService courseService, Omnieye.Bot.Services.UserSessionService userSessionService)
         {
             _botClient = botClient;
-            _courseService = courseService;
-            _userSessionService = userSessionService;
+            _newCourseService = courseService; // Corrected assignment
+            _existingUserSessionService = userSessionService; // Corrected assignment
         }
 
         public async Task<bool> RouteAsync(Message message, CancellationToken cancellationToken)
         {
             var chatId = message.Chat.Id;
             var messageText = message.Text;
-            var userSession = _userSessionService.GetUserSession(chatId);
+            var userSession = _existingUserSessionService.GetUserSession(chatId); // Use corrected field name
 
             if (messageText == "/start") // Technically /start is often global, but let new system handle it if it wants
             {
@@ -84,7 +85,7 @@ namespace OmnieyeBot.BotHandlers
         private async Task HandleShowCourseModulesAsync(long chatId, UserSession userSession, CancellationToken cancellationToken)
         {
             userSession.CurrentModuleId = null;
-            var modules = _courseService.GetCourseModules();
+            var modules = _newCourseService.GetCourseModules(); // Use corrected field name
             var replyKeyboardMarkup = LessonKeyboard.GetModulesKeyboard(modules);
 
             await _botClient.SendTextMessageAsync(
@@ -97,8 +98,7 @@ namespace OmnieyeBot.BotHandlers
         private async Task HandleShowLessonsInModuleAsync(long chatId, string moduleMessage, UserSession userSession, CancellationToken cancellationToken)
         {
             var moduleTitle = moduleMessage.Replace("➡️ Модуль: ", "");
-            // Assuming GetCourseModules() gives access to all modules to find by title
-            var module = _courseService.GetCourseModules().FirstOrDefault(m => m.Title == moduleTitle);
+            var module = _newCourseService.GetCourseModules().FirstOrDefault(m => m.Title == moduleTitle); // Use corrected field name
 
             if (module == null)
             {
@@ -127,7 +127,7 @@ namespace OmnieyeBot.BotHandlers
             }
 
             var lessonTitle = lessonMessage.Replace("➡️ Урок: ", "");
-            var module = _courseService.GetModuleById(userSession.CurrentModuleId);
+            var module = _newCourseService.GetModuleById(userSession.CurrentModuleId); // Use corrected field name
             var lesson = module?.Lessons.FirstOrDefault(l => l.Title == lessonTitle);
 
             if (lesson == null)

@@ -4,27 +4,29 @@ using System.Threading.Tasks;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using OmnieyeBot.Services;
+// Explicitly using both service namespaces or aliases
+using NewCourseService = OmnieyeBot.Services.CourseService;
+using ExistingUserSessionService = Omnieye.Bot.Services.UserSessionService;
+
 // CommandRouter is in the same namespace, so direct reference is fine.
-// using OmnieyeBot.BotHandlers; // Not strictly needed if in same namespace.
 
 namespace OmnieyeBot.BotHandlers
 {
     public class MessageHandler
     {
         private readonly ITelegramBotClient _botClient;
-        private readonly CourseService _courseService;
-        private readonly UserSessionService _userSessionService;
+        private readonly NewCourseService _courseService;
+        private readonly ExistingUserSessionService _userSessionService;
         private readonly CommandRouter _commandRouter;
 
-        public MessageHandler(ITelegramBotClient botClient, CourseService courseService, UserSessionService userSessionService)
+        public MessageHandler(ITelegramBotClient botClient, NewCourseService courseService, ExistingUserSessionService userSessionService)
         {
-            _botClient = botClient; // Will be passed to CommandRouter
+            _botClient = botClient;
             _courseService = courseService;
             _userSessionService = userSessionService;
 
-            // Pass botClient to CommandRouter as it's needed for sending messages
-            _commandRouter = new CommandRouter(botClient, _courseService, _userSessionService);
+            // Pass botClient, new courseService, and existing userSessionService to CommandRouter
+            _commandRouter = new CommandRouter(_botClient, _courseService, _userSessionService);
         }
 
         public async Task<bool> HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
