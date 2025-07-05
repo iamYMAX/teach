@@ -990,16 +990,30 @@ namespace Omnieye.Bot
                 }
 
                 var users = _userSessionService.GetAllUserProfiles() ?? new List<UserProfile>();
-                var lessons = allLessonsData ?? new List<Lesson>(); // Using the static list from Program.cs for lessons
 
-                // Load tests from AdminService (CoreModels.Test)
-                var adminPanelTests = await _adminService.GetTestsAsync() ?? new List<Omnieye.Bot.CoreModels.Test>();
+                // Original Bot Content
+                var existingLessons = allLessonsData ?? new List<Lesson>();
+                var existingFlashcards = allFlashcardsData ?? new List<Flashcard>();
+                var existingTests = new List<Omnieye.Bot.Models.Test>();
+                var loadedTest = _testLoaderService.LoadTest();
+                if (loadedTest != null) { existingTests.Add(loadedTest); }
+
+                // Admin Panel Content
+                var adminPanelLessons = await _adminService.GetLessonsAsync() ?? new List<AdminLesson>();
+                var adminPanelFlashcards = await _adminService.GetFlashcardsAsync() ?? new List<AdminFlashcard>();
+                var adminPanelTests = await _adminService.GetTestsAsync() ?? new List<AdminTest>();
+                var adminPanelDifficultyLevels = await _adminService.GetDifficultyLevelsAsync() ?? new List<DifficultyLevel>();
 
                 var data = new BotData
                 {
                     Users = users,
-                    Lessons = lessons, // Assuming BotData.Lessons is List<CoreModels.Lesson>
-                    Tests = adminPanelTests // BotData.Tests is now List<CoreModels.Test>
+                    ExistingLessons = existingLessons,
+                    ExistingFlashcards = existingFlashcards,
+                    ExistingTests = existingTests,
+                    AdminPanelLessons = adminPanelLessons,
+                    AdminPanelFlashcards = adminPanelFlashcards,
+                    AdminPanelTests = adminPanelTests,
+                    AdminPanelDifficultyLevels = adminPanelDifficultyLevels
                 };
 
                 var options = new JsonSerializerOptions { WriteIndented = true };
@@ -1114,56 +1128,60 @@ namespace Omnieye.Bot
 
                 // For Lessons, Program.cs currently holds them in a static list.
                 // A true "LessonService" would be needed to make this cleaner.
-                // For now, we can replace the static list.
-                if (data.Lessons != null)
+                // For now, we can replace the static list for ExistingLessons.
+                if (data.ExistingLessons != null)
                 {
-                    // LessonService.LoadLessons(data.Lessons); // Placeholder if we had a LessonService
                     allLessonsData.Clear();
-                    allLessonsData.AddRange(data.Lessons);
-                    Console.WriteLine($"Loaded {data.Lessons.Count} lessons into Program.cs static list.");
+                    allLessonsData.AddRange(data.ExistingLessons);
+                    Console.WriteLine($"Loaded {data.ExistingLessons.Count} existing lessons into Program.cs static list.");
+                }
+                // For original Flashcards
+                if (data.ExistingFlashcards != null)
+                {
+                    allFlashcardsData.Clear();
+                    allFlashcardsData.AddRange(data.ExistingFlashcards);
+                    Console.WriteLine($"Loaded {data.ExistingFlashcards.Count} existing flashcards into Program.cs static list.");
                 }
 
-                // For Tests, similar to Lessons, Program.cs uses _testLoaderService to load one test.
-                // If we are importing a list of tests, how TestLoaderService handles this needs definition.
-                // The current BotData structure implies a list of tests.
-                // For simplicity, if there's at least one test in the import,
-                // we can assume it's the one TestLoaderService should be aware of or
-                // that activeTestsData should be updated.
-                // This part is a bit tricky with the current structure.
-                // Let's assume for now we replace activeTestsData if data.Tests is not null and has items.
-                // This would require converting List<Omnieye.Bot.Models.Test> to Dictionary<int, TestData>
-                // which is not straightforward as they are different structures.
-
-                // Simplification: The export saves a List<Test>. The import will try to load this.
-                // However, TestLoaderService.LoadTest() returns one Test.
-                // And Program.cs uses activeTestsData (Dictionary<int, TestData>).
-                    // data.Tests is now List<CoreModels.Test>
-                    if (data.Tests != null)
+                // For original Tests (managed by TestLoaderService via tests_junior_admin.json)
+                if (data.ExistingTests != null && data.ExistingTests.Any())
                 {
-                        await _adminService.SaveTestsAsync(data.Tests);
-                        Console.WriteLine($"Imported and saved {data.Tests.Count} tests using AdminService.");
-                        // The old logic for updating tests_junior_admin.json (which uses Models.Test)
-                        // would require a mapping from CoreModels.Test to Models.Test if still needed.
-                        // For now, this specific file update is removed from direct import to avoid type conflicts
-                        // and to centralize test data management via AdminService.
-                        // If tests_junior_admin.json needs to be synced, it's a separate task.
-                        /*
-                        if (data.Tests.Any()) // Example if we wanted to update the first test to tests_junior_admin.json
+                    // Assuming the first test in the list is the one for tests_junior_admin.json
+                    var firstOriginalTest = data.ExistingTests.First();
+                    string testFilePath = Path.Combine("materials/junior_admin", "tests_junior_admin.json");
+                    try
                     {
-                            // This would require mapping CoreModels.Test to Models.Test
-                            // var firstCoreModelTest = data.Tests.First();
-                            // var modelTestToSave = MapCoreTestToModelTest(firstCoreModelTest); // Hypothetical mapping
-                            // string testFilePath = Path.Combine("materials/junior_admin", "tests_junior_admin.json");
-                            // try
-                            // {
-                            //     var testJson = JsonSerializer.Serialize(modelTestToSave, new JsonSerializerOptions { WriteIndented = true });
-                            //     await IOFile.WriteAllTextAsync(testFilePath, testJson);
-                            //     Console.WriteLine($"Successfully updated '{testFilePath}' with the imported test data (mapped).");
-                            //    _testLoaderService = new TestLoaderService();
-                            // }
-                            // catch(Exception ex) { Console.WriteLine($"Could not write mapped test to {testFilePath}: {ex.Message}"); }
+                        var testJson = JsonSerializer.Serialize(firstOriginalTest, new JsonSerializerOptions { WriteIndented = true });
+                        await IOFile.WriteAllTextAsync(testFilePath, testJson);
+                        Console.WriteLine($"Successfully updated '{testFilePath}' with the imported existing test data.");
+                        _testLoaderService = new TestLoaderService(); // Re-instantiate to pick up changes
                     }
-                        */
+                    catch(Exception ex)
+                    {
+                         Console.WriteLine($"Could not write imported existing test to {testFilePath}: {ex.Message}");
+                    }
+                }
+
+                // Import Admin Panel Data
+                if (data.AdminPanelLessons != null)
+                {
+                    await _adminService.SaveLessonsAsync(data.AdminPanelLessons);
+                    Console.WriteLine($"Imported {data.AdminPanelLessons.Count} admin panel lessons.");
+                }
+                if (data.AdminPanelFlashcards != null)
+                {
+                    await _adminService.SaveFlashcardsAsync(data.AdminPanelFlashcards);
+                    Console.WriteLine($"Imported {data.AdminPanelFlashcards.Count} admin panel flashcards.");
+                }
+                if (data.AdminPanelTests != null)
+                {
+                    await _adminService.SaveTestsAsync(data.AdminPanelTests);
+                    Console.WriteLine($"Imported {data.AdminPanelTests.Count} admin panel tests.");
+                }
+                if (data.AdminPanelDifficultyLevels != null)
+                {
+                    await _adminService.SaveDifficultyLevelsAsync(data.AdminPanelDifficultyLevels);
+                    Console.WriteLine($"Imported {data.AdminPanelDifficultyLevels.Count} admin panel difficulty levels.");
                 }
 
                 Console.WriteLine($"Data successfully imported from {Path.GetFullPath(filePath)}.");

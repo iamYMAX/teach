@@ -1,4 +1,4 @@
-using Omnieye.Bot.CoreModels;
+using Omnieye.Bot.CoreModels; // This will now bring in AdminLesson, AdminFlashcard, AdminTest, DifficultyLevel
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -30,9 +30,9 @@ namespace Omnieye.Bot.Admin
             };
 
             // Initialize files if they don't exist or are empty
-            InitializeJsonFile<List<Lesson>>(Path.Combine(DataDir, LessonsFile));
-            InitializeJsonFile<List<Test>>(Path.Combine(DataDir, TestsFile));
-            InitializeJsonFile<List<Flashcard>>(Path.Combine(DataDir, FlashcardsFile));
+            InitializeJsonFile<List<AdminLesson>>(Path.Combine(DataDir, LessonsFile));
+            InitializeJsonFile<List<AdminTest>>(Path.Combine(DataDir, TestsFile));
+            InitializeJsonFile<List<AdminFlashcard>>(Path.Combine(DataDir, FlashcardsFile));
             InitializeJsonFile<List<DifficultyLevel>>(Path.Combine(DataDir, LevelsFile));
         }
 
@@ -98,10 +98,10 @@ namespace Omnieye.Bot.Admin
         }
 
         // Lesson Methods
-        public async Task<List<Lesson>> GetLessonsAsync() => await LoadDataAsync<Lesson>(LessonsFile);
-        public async Task SaveLessonsAsync(List<Lesson> lessons) => await SaveDataAsync(LessonsFile, lessons);
+        public async Task<List<AdminLesson>> GetLessonsAsync() => await LoadDataAsync<AdminLesson>(LessonsFile);
+        public async Task SaveLessonsAsync(List<AdminLesson> lessons) => await SaveDataAsync(LessonsFile, lessons);
 
-        public async Task AddLessonAsync(Lesson newLesson)
+        public async Task AddLessonAsync(AdminLesson newLesson)
         {
             var lessons = await GetLessonsAsync();
             // Optional: Check for duplicate lesson names, if desired
@@ -113,13 +113,13 @@ namespace Omnieye.Bot.Admin
             await SaveLessonsAsync(lessons);
         }
 
-        public async Task<Lesson?> GetLessonByIdAsync(string lessonId)
+        public async Task<AdminLesson?> GetLessonByIdAsync(string lessonId)
         {
             var lessons = await GetLessonsAsync();
             return lessons.FirstOrDefault(l => l.Id == lessonId);
         }
 
-        public async Task<bool> UpdateLessonAsync(Lesson updatedLesson)
+        public async Task<bool> UpdateLessonAsync(AdminLesson updatedLesson)
         {
             var lessons = await GetLessonsAsync();
             var lessonIndex = lessons.FindIndex(l => l.Id == updatedLesson.Id);
@@ -148,10 +148,10 @@ namespace Omnieye.Bot.Admin
         }
 
         // Test Methods
-        public async Task<List<Test>> GetTestsAsync() => await LoadDataAsync<Test>(TestsFile);
-        public async Task SaveTestsAsync(List<Test> tests) => await SaveDataAsync(TestsFile, tests);
+        public async Task<List<AdminTest>> GetTestsAsync() => await LoadDataAsync<AdminTest>(TestsFile);
+        public async Task SaveTestsAsync(List<AdminTest> tests) => await SaveDataAsync(TestsFile, tests);
 
-        public async Task AddTestAsync(Test newTest) // newTest will have Name and LevelId set, Questions will be empty
+        public async Task AddTestAsync(AdminTest newTest) // newTest will have Name and LevelId set, Questions will be empty
         {
             var tests = await GetTestsAsync();
             // Optional: Check for duplicate test names
@@ -163,7 +163,7 @@ namespace Omnieye.Bot.Admin
             await SaveTestsAsync(tests);
         }
 
-        public async Task<Test?> GetTestByIdAsync(string testId)
+        public async Task<AdminTest?> GetTestByIdAsync(string testId)
         {
             var tests = await GetTestsAsync();
             return tests.FirstOrDefault(t => t.Id == testId);
@@ -184,10 +184,10 @@ namespace Omnieye.Bot.Admin
         }
 
         // Flashcard Methods
-        public async Task<List<Flashcard>> GetFlashcardsAsync() => await LoadDataAsync<Flashcard>(FlashcardsFile);
-        public async Task SaveFlashcardsAsync(List<Flashcard> flashcards) => await SaveDataAsync(FlashcardsFile, flashcards);
+        public async Task<List<AdminFlashcard>> GetFlashcardsAsync() => await LoadDataAsync<AdminFlashcard>(FlashcardsFile);
+        public async Task SaveFlashcardsAsync(List<AdminFlashcard> flashcards) => await SaveDataAsync(FlashcardsFile, flashcards);
 
-        public async Task AddFlashcardAsync(Flashcard newFlashcard)
+        public async Task AddFlashcardAsync(AdminFlashcard newFlashcard)
         {
             var flashcards = await GetFlashcardsAsync();
             // Optional: Check for duplicate flashcard questions if desired, though less common.
@@ -199,13 +199,13 @@ namespace Omnieye.Bot.Admin
             await SaveFlashcardsAsync(flashcards);
         }
 
-        public async Task<Flashcard?> GetFlashcardByIdAsync(string flashcardId)
+        public async Task<AdminFlashcard?> GetFlashcardByIdAsync(string flashcardId)
         {
             var flashcards = await GetFlashcardsAsync();
             return flashcards.FirstOrDefault(fc => fc.Id == flashcardId);
         }
 
-        public async Task<bool> UpdateFlashcardAsync(Flashcard updatedFlashcard)
+        public async Task<bool> UpdateFlashcardAsync(AdminFlashcard updatedFlashcard)
         {
             var flashcards = await GetFlashcardsAsync();
             var flashcardIndex = flashcards.FindIndex(fc => fc.Id == updatedFlashcard.Id);
