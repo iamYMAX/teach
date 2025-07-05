@@ -804,27 +804,38 @@ namespace Omnieye.Bot
             session.CurrentState = UserCurrentState.MainMenu;
         }
 
-        static async Task SendLongMessageAsync(ITelegramBotClient botClient, long chatId, string message, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null, ParseMode parseMode = ParseMode.Default, int chunkSize = 4000)
+        static async Task SendLongMessageAsync(ITelegramBotClient botClient, long chatId, string message, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null, ParseMode? parseMode = null, int chunkSize = 4000)
         {
             if (string.IsNullOrEmpty(message)) return;
             var chunks = SplitMessage(message, chunkSize);
             for (int i = 0; i < chunks.Count; i++)
             {
                 bool isLastChunk = i == chunks.Count - 1;
-                // Apply ParseMode to all chunks if it's not Default, otherwise only to the last if markup is also present (or to all if no markup)
-                ParseMode currentChunkParseMode = (parseMode != ParseMode.Default) ? parseMode : (isLastChunk && replyMarkup != null ? parseMode : ParseMode.Default);
-                if (parseMode != ParseMode.Default && isLastChunk && replyMarkup == null) currentChunkParseMode = parseMode;
 
+                // Determine the parseMode for the current chunk.
+                // If a specific parseMode is provided for the whole message, use it for all chunks.
+                // Otherwise (if parseMode is null), don't specify parseMode to Telegram.
+                ParseMode? currentChunkParseMode = parseMode;
 
-                await botClient.SendTextMessageAsync(chatId, chunks[i],
-                    replyMarkup: isLastChunk ? replyMarkup : null,
-                    cancellationToken: cancellationToken,
-                    parseMode: currentChunkParseMode);
+                if (currentChunkParseMode.HasValue)
+                {
+                    await botClient.SendTextMessageAsync(chatId, chunks[i],
+                        replyMarkup: isLastChunk ? replyMarkup : null,
+                        parseMode: currentChunkParseMode.Value,
+                        cancellationToken: cancellationToken);
+                }
+                else
+                {
+                    await botClient.SendTextMessageAsync(chatId, chunks[i],
+                        replyMarkup: isLastChunk ? replyMarkup : null,
+                        cancellationToken: cancellationToken);
+                }
+
                 if (!isLastChunk) await Task.Delay(200, cancellationToken);
             }
         }
 
-        static async Task SendCombinedMessages(ITelegramBotClient botClient, long chatId, List<string> messages, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null, ParseMode parseMode = ParseMode.Default)
+        static async Task SendCombinedMessages(ITelegramBotClient botClient, long chatId, List<string> messages, CancellationToken cancellationToken, IReplyMarkup? replyMarkup = null, ParseMode? parseMode = null)
         {
             string combined = string.Join("\n", messages);
             await SendLongMessageAsync(botClient, chatId, combined, cancellationToken, replyMarkup, parseMode: parseMode);
