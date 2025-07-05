@@ -170,6 +170,7 @@ namespace OmnieyeBot.BotHandlers
             userSession.CurrentModuleIdForNav = moduleData.ModuleId.ToString();
             userSession.CurrentLoadedModuleData = moduleData;
             userSession.CurrentLessonIdForContext = 0;
+            Console.WriteLine($"[CommandRouter] In HandleShowLessonsInModuleAsync: Set CurrentModuleIdForNav='{userSession.CurrentModuleIdForNav}', CurrentLoadedModuleData is {(userSession.CurrentLoadedModuleData != null ? "SET" : "NULL")}, Title: {userSession.CurrentLoadedModuleData?.Title}"); // DEBUG LOG
 
             var replyKeyboardMarkup = LessonKeyboard.GetLessonsInModuleKeyboard(moduleData); // Uses new ModuleContent
 
