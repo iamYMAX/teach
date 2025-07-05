@@ -360,7 +360,7 @@ namespace OmnieyeBot.BotHandlers
             );
         }
 
-        public async Task HandleShowAnswerCallbackAsync(string callbackData, UserSession userSession, long chatId, CancellationToken ct)
+        public async Task HandleShowAnswerCallbackAsync(string callbackData, UserSession userSession, long chatId, int messageId, CancellationToken ct)
         {
             if (userSession.CurrentFlashcardContent == null)
             {
@@ -371,32 +371,33 @@ namespace OmnieyeBot.BotHandlers
             // Re-send the question and then the answer, keeping the same interaction buttons
              var inlineKeyboard = new InlineKeyboardMarkup(new[]
             {
-                // "Показать ответ" could be removed or disabled here, but for simplicity, keep it or user can ignore
+                // "Показать ответ" button is removed after answer is shown.
                 new [] { InlineKeyboardButton.WithCallbackData("Следующая карточка", $"next_flashcard_{userSession.CurrentModuleIdForNav}_{userSession.CurrentLessonIdForContext}") },
                 new [] { InlineKeyboardButton.WithCallbackData("Выйти из карточек", $"exit_flashcards_{userSession.CurrentModuleIdForNav}_{userSession.CurrentLessonIdForContext}") }
             });
 
-            await _botClient.EditMessageTextAsync( // Or send new message if preferred
-                chatId: chatId,
-                messageId: GetLastBotMessageId(userSession), // Requires storing last message ID with inline keyboard
-                text: $"❓ *Вопрос:*\n{userSession.CurrentFlashcardContent.Question}\n\n💡 *Ответ:*\n{userSession.CurrentFlashcardContent.Answer}",
-                parseMode: ParseMode.Markdown,
-                replyMarkup: inlineKeyboard, // Offer next/exit
-                cancellationToken: ct);
-            // To avoid error with GetLastBotMessageId, for now, just send a new message for the answer.
-            // await _botClient.SendTextMessageAsync(chatId, $"💡 *Ответ:*\n{userSession.CurrentFlashcardContent.Answer}", parseMode: ParseMode.Markdown, replyMarkup: inlineKeyboard, cancellationToken: ct);
-        }
-         // Helper method to get message ID - this is a placeholder, actual implementation needed
-        private int GetLastBotMessageId(UserSession session) {
-            // This needs to be implemented by storing the Message ID when ShowNextFlashcardAsync sends a message.
-            // For now, this will cause an error if EditMessageTextAsync is used.
-            // A simpler approach for now is to send a new message for the answer.
-            // To properly use EditMessageTextAsync, the message ID of the question needs to be stored in the session or passed.
-            // Let's assume for now that `EditMessageTextAsync` is problematic without messageId tracking and send a new message for answer.
-            Console.WriteLine("Warning: GetLastBotMessageId is not properly implemented. Editing message might fail.");
-            return 0;
-        }
+            string fullMessageText = $"❓ *Вопрос:*\n{userSession.CurrentFlashcardContent.Question}\n\n💡 *Ответ:*\n{userSession.CurrentFlashcardContent.Answer}";
 
+            try
+            {
+                await _botClient.EditMessageTextAsync(
+                    chatId: chatId,
+                    messageId: messageId, // Use the passed messageId
+                    text: fullMessageText,
+                    parseMode: ParseMode.Markdown,
+                    replyMarkup: inlineKeyboard,
+                    cancellationToken: ct);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CommandRouter] Error editing message for flashcard answer: {ex.Message}. Sending new message as fallback.");
+                // Fallback: If editing fails (e.g., message too old, or not modified), send a new message with the answer.
+                // However, this might be confusing if the old message with "Show Answer" button is still there.
+                // A better fallback might be to just send the answer as a new message without buttons.
+                await _botClient.SendTextMessageAsync(chatId, $"💡 *Ответ:*\n{userSession.CurrentFlashcardContent.Answer}", parseMode: ParseMode.Markdown, cancellationToken: ct);
+            }
+        }
+        // Removed GetLastBotMessageId as messageId is now passed directly.
 
         public async Task HandleNextFlashcardCallbackAsync(string callbackData, UserSession userSession, long chatId, CancellationToken ct)
         {
@@ -626,12 +627,7 @@ namespace OmnieyeBot.BotHandlers
             }
         }
 
-        // private async Task HandleUnknownCommandAsync(long chatId, CancellationToken cancellationToken) // Not used when returning false
-        {
-            await _botClient.SendTextMessageAsync(
-                chatId: chatId,
-                text: "Извините, я не понял эту команду. Пожалуйста, используйте кнопки.",
-                cancellationToken: cancellationToken);
-        }
+        // HandleUnknownCommandAsync is not used when RouteAsync returns false for unhandled commands by this router.
+        // The original Program.cs handler will deal with truly unknown commands.
     } // End of CommandRouter class
 } // End of OmnieyeBot.BotHandlers namespace

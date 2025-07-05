@@ -75,9 +75,3 @@ namespace OmnieyeBot.Keyboards
         }
     }
 }
-            {
-                ResizeKeyboard = true
-            };
-        }
-    }
-}

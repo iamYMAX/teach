@@ -5,8 +5,9 @@ using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 // Explicitly using both service namespaces or aliases
-using NewCourseService = OmnieyeBot.Services.CourseService;
+// using NewCourseService = OmnieyeBot.Services.CourseService; // No longer needed
 using ExistingUserSessionService = Omnieye.Bot.Services.UserSessionService;
+using NewCourseContentLoaderService = OmnieyeBot.Services.CourseContentLoaderService; // Alias for clarity
 
 // CommandRouter is in the same namespace, so direct reference is fine.
 
@@ -16,12 +17,12 @@ namespace OmnieyeBot.BotHandlers
     {
         private readonly ITelegramBotClient _botClient;
         private readonly ExistingUserSessionService _userSessionService;
-        private readonly CourseContentLoaderService _courseContentLoaderService; // Renamed from OmnieyeBot.Services for consistency
+        private readonly NewCourseContentLoaderService _courseContentLoaderService;
         private readonly CommandRouter _commandRouter;
 
         public MessageHandler(ITelegramBotClient botClient,
                               ExistingUserSessionService userSessionService,
-                              CourseContentLoaderService courseContentLoaderService) // Updated constructor
+                              NewCourseContentLoaderService courseContentLoaderService) // Use aliased type
         {
             _botClient = botClient;
             _userSessionService = userSessionService;

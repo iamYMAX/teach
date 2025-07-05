@@ -166,7 +166,7 @@ namespace Omnieye.Bot
             _courseContentLoaderService = new NewCourseContentLoaderService();
 
             // Initialize NEW MessageHandler for course navigation
-            // It needs botClient, existing userSessionService, and the new courseContentLoaderService
+            // It needs botClient, existing userSessionService (aliased), and the new courseContentLoaderService (aliased)
             _newCourseMessageHandler = new NewMessageHandler(_botClient, _userSessionService, _courseContentLoaderService);
 
             StartAutoBackup();
