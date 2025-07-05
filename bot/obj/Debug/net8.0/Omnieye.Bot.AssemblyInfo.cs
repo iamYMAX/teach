@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Omnieye.Bot")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+dff5f0a5799ecc777f5600b66b8aa894f06ee100")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+605fb4c05bc97ee9c6181af17e82a4fa4983b056")]
 [assembly: System.Reflection.AssemblyProductAttribute("Omnieye.Bot")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Omnieye.Bot")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
