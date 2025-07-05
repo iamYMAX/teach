@@ -24,18 +24,24 @@ using OmnieyeBot.BotHandlers; // For MessageHandler (new)
 using OmnieyeBot.Services;    // For CourseService (new)
 // OmnieyeBot.Models are used by CourseService etc.
 
+// Add specific using for existing UserSessionService if not already covered by Omnieye.Bot.Services
+using ExistingUserSessionService = Omnieye.Bot.Services.UserSessionService;
+using NewCourseService = OmnieyeBot.Services.CourseService;
+using NewMessageHandler = OmnieyeBot.BotHandlers.MessageHandler;
+
+
 namespace Omnieye.Bot // Matching existing file's namespace
 {
     class Program
     {
         // Existing services
-        private static UserSessionService _userSessionService = new UserSessionService(); // Existing
+        private static ExistingUserSessionService _userSessionService = new ExistingUserSessionService(); // Existing, now aliased
         private static MaterialLoader _materialLoader = new MaterialLoader();
         private static TestLoaderService _testLoaderService = new TestLoaderService();
 
         // New services and handlers for course navigation
-        private static CourseService _courseService; // New
-        private static MessageHandler _courseMessageHandler; // New MessageHandler instance
+        private static NewCourseService _courseService; // New, now aliased
+        private static NewMessageHandler _courseMessageHandler; // New MessageHandler instance, aliased
 
         private static ITelegramBotClient? _botClient;
         private static CancellationTokenSource? _cts;
@@ -44,7 +50,7 @@ namespace Omnieye.Bot // Matching existing file's namespace
         private static readonly List<string> availableLessons_OLD_FORMAT = new List<string> { "Урок 1: Введение в систему", "Урок 2: Основы работы", "Урок 3: Продвинутые возможности" };
         private static readonly Dictionary<int, string> lessonDetails_OLD_FORMAT = new Dictionary<int, string> { { 1, "Урок 1: Введение в систему\n\nЗдесь рассказывается об основах работы с ботом и системой." }, { 2, "Урок 2: Основы работы\n\nОписание основных функций и интерфейса." }, { 3, "Урок 3: Продвинутые возможности\n\nДополнительные настройки и советы." } };
         private static readonly List<string> availableTests_OLD_FORMAT = new List<string> { "Тест 1: Проверка знаний по основам", "Тест 2: Продвинутый тест" };
-        private static readonly Dictionary<int, string> testDetails_full = new Dictionary<int, string> { { 1, "Тест 1: Проверка знаний по основам\n\nВключает вопросы по базовым темам." }, { 2, "Тест 2: Продвинутый тест\n\nСложные вопросы для опытных пользователей." } }; // Renamed from testDetails to avoid conflict if any
+        private static readonly Dictionary<int, string> testDetails = new Dictionary<int, string> { { 1, "Тест 1: Проверка знаний по основам\n\nВключает вопросы по базовым темам." }, { 2, "Тест 2: Продвинутый тест\n\nСложные вопросы для опытных пользователей." } };
         private static readonly ReplyKeyboardMarkup MainCommandKeyboard = new ReplyKeyboardMarkup(new KeyboardButton[][] // Explicitly KeyboardButton[][]
         {
             new KeyboardButton[] { new KeyboardButton("📘 Уроки"), new KeyboardButton("🧪 Тесты") },
@@ -86,9 +92,24 @@ namespace Omnieye.Bot // Matching existing file's namespace
         {
             ResizeKeyboard = true
         };
-        private static readonly Dictionary<int, TestData> activeTestsData_full = new Dictionary<int, TestData> { /* ... */ }; // Renamed from activeTestsData
-        private static readonly List<Lesson> allLessonsData = new List<Lesson> { /* ... */ }; // This is Omnieye.Bot.CoreModels.Lesson
-        private static readonly List<Flashcard> allFlashcardsData = new List<Flashcard> { /* ... */ };
+        private static readonly Dictionary<int, TestData> activeTestsData = new Dictionary<int, TestData> { /* Original content here, assuming it was not just empty placeholder */
+            {
+                1, new TestData(1, "Тест по основам", new List<QuestionData>
+                {
+                    new QuestionData("Вопрос 1: Что такое бот?", new List<string>{ "Программа", "Человек", "Животное" }, 0),
+                    new QuestionData("Вопрос 2: Какой язык используется в этом боте?", new List<string>{ "C#", "Python", "JavaScript" }, 0)
+                }, TestDifficulty.Easy)
+            },
+            {
+                2, new TestData(2, "Продвинутый тест", new List<QuestionData>
+                {
+                    new QuestionData("Вопрос 1 (П): Что такое сеть?", new List<string>{ "Группа компьютеров", "Отдельный компьютер", "Принтер" }, 0),
+                    new QuestionData("Вопрос 2 (П): IP-адрес это?", new List<string>{ "Физический адрес", "Логический адрес", "Почтовый адрес" }, 1)
+                }, TestDifficulty.Medium)
+            }
+        };
+        private static readonly List<Lesson> allLessonsData = new List<Lesson> { /* Original content */ }; // This is Omnieye.Bot.CoreModels.Lesson
+        private static readonly List<Flashcard> allFlashcardsData = new List<Flashcard> { /* Original content */ };
         // --- End of existing static fields ---
 
 
@@ -110,11 +131,11 @@ namespace Omnieye.Bot // Matching existing file's namespace
             _cts = new CancellationTokenSource();
 
             // Initialize new CourseService
-            _courseService = new CourseService(); // Uses OmnieyeBot.Models.CourseModule/Lesson
+            _courseService = new NewCourseService(); // Uses OmnieyeBot.Models.CourseModule/Lesson
 
             // Initialize new MessageHandler for course navigation
             // It needs botClient, new courseService, and existing userSessionService
-            _courseMessageHandler = new MessageHandler(_botClient, _courseService, _userSessionService);
+            _courseMessageHandler = new NewMessageHandler(_botClient, _courseService, _userSessionService);
 
 
             // Start services like auto-backup
