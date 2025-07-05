@@ -50,7 +50,8 @@ namespace Omnieye.Bot
         {
             new KeyboardButton[] { new KeyboardButton("📘 Уроки"), new KeyboardButton("🧪 Тесты") },
             new KeyboardButton[] { new KeyboardButton("🧠 Флеш-карточки"), new KeyboardButton("История") },
-            new KeyboardButton[] { new KeyboardButton("👤 Профиль"), new KeyboardButton("🔐 Выйти") }
+            new KeyboardButton[] { new KeyboardButton("🏆 Топ"), new KeyboardButton("👤 Профиль") },
+            new KeyboardButton[] { new KeyboardButton("🔐 Выйти") }
         })
         {
             ResizeKeyboard = true
@@ -305,6 +306,9 @@ namespace Omnieye.Bot
                         break;
                     case "История": await HandleHistoryAsync(botClient, session, chatId, cancellationToken); break;
                     case "👤 Профиль": await HandleProfileAsync(botClient, session, chatId, cancellationToken); break;
+                    case "🏆 Топ": // Handle "Топ" button
+                        await ShowLeaderboardAsync(botClient, session, chatId, cancellationToken);
+                        break;
                     case "Назад":
                         if (session.CurrentState == UserCurrentState.ViewingTestDetail) await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
                         else
@@ -415,6 +419,10 @@ namespace Omnieye.Bot
                         break;
                     case "/profile": await HandleProfileAsync(botClient, session, chatId, cancellationToken); break;
                     case "/history": await HandleHistoryAsync(botClient, session, chatId, cancellationToken); break;
+                    case "/leaderboard": // Handle /leaderboard command
+                    case "/top":         // Alias /top
+                        await ShowLeaderboardAsync(botClient, session, chatId, cancellationToken);
+                        break;
                     default:
                         await botClient.SendTextMessageAsync(chatId, $"Unknown command '{command}'. Try /help for commands.", cancellationToken: cancellationToken);
                         break;
@@ -887,6 +895,51 @@ namespace Omnieye.Bot
         {
             string combined = string.Join("\n", messages);
             await SendLongMessageAsync(botClient, chatId, combined, cancellationToken, replyMarkup, parseMode: parseMode);
+        }
+
+        static async Task ShowLeaderboardAsync(ITelegramBotClient botClient, UserSession currentSession, long chatId, CancellationToken ct) // Added currentSession for context checks
+        {
+            if (currentSession.CurrentState == UserCurrentState.TakingTest && currentSession.ActiveTestId.HasValue)
+            {
+                await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать лидерборд.", cancellationToken: ct);
+                await DisplayCurrentTestQuestionAsync(botClient, currentSession, chatId, ct);
+                return;
+            }
+
+            // UserSessionService instance is _userSessionService (static field)
+            var allUserProfiles = _userSessionService.GetAllUserProfiles();
+
+            if (allUserProfiles == null || !allUserProfiles.Any())
+            {
+                await botClient.SendTextMessageAsync(chatId, "Лидерборд пока пуст.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                currentSession.CurrentState = UserCurrentState.MainMenu;
+                return;
+            }
+
+            var topUsers = allUserProfiles
+                .OrderByDescending(p => p.TotalCorrectAnswers) // Assuming score is TotalCorrectAnswers
+                .ThenBy(p => p.RegisteredAt) // Secondary sort for tie-breaking by registration date (earlier is better)
+                .Take(10)
+                .ToList();
+
+            if (!topUsers.Any()) // Should be caught by previous check, but good for safety
+            {
+                await botClient.SendTextMessageAsync(chatId, "Лидерборд пока пуст.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                currentSession.CurrentState = UserCurrentState.MainMenu;
+                return;
+            }
+
+            var leaderboardText = new StringBuilder("🏆 Топ 10 пользователей:\n");
+            int rank = 1;
+            foreach (var profile in topUsers)
+            {
+                string name = !string.IsNullOrWhiteSpace(profile.Name) ? profile.Name : $"User {profile.UserId}";
+                // Using TotalCorrectAnswers as "баллов" as per UserProfile structure
+                leaderboardText.AppendLine($"{rank++}. {name} — {profile.TotalCorrectAnswers} баллов (Уровень: {profile.Level})");
+            }
+
+            await SendLongMessageAsync(botClient, chatId, leaderboardText.ToString(), ct, MainCommandKeyboard);
+            currentSession.CurrentState = UserCurrentState.MainMenu; // Viewing leaderboard returns to main menu context
         }
 
         public static List<string> SplitMessage(string message, int chunkSize = 4000)

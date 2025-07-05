@@ -18,6 +18,9 @@ This project aims to create an educational platform consisting of:
     -   Tracks user's name, registration date, total tests taken, total correct answers, and calculates a level.
     -   Viewable via "👤 Профиль" button or `/profile` command.
     -   Name can be set using the `/setname` command.
+-   **Leaderboard (🏆 Топ):**
+    -   View the top 10 users ranked by their total correct answers (score).
+    -   Accessed via the "🏆 Топ" button or `/leaderboard` (also `/top`) command.
 -   **Lesson System:**
     -   Lessons are categorized by difficulty (Beginner 🟢, Intermediate 🟡, Advanced 🔴) and become available based on your user Level.
     -   Access lessons via the "📘 Уроки" button.
@@ -99,6 +102,7 @@ After logging in, a command keyboard will appear with quick actions:
 -   **"История"**: Shows your test-taking history (requires prior test completions).
 -   **"👤 Профиль"**: Displays your user profile.
 -   **"🧠 Флеш-карточки"**: Starts a flashcard review session based on your level.
+-   **"🏆 Топ"**: Displays the top 10 users by score.
 -   **"🔐 Выйти"**: Logs you out and removes the keyboard.
 
 When viewing the lesson list (after pressing "📘 Уроки"):
@@ -132,6 +136,7 @@ You can also use the following slash commands:
 -   `/history`: Displays your test-taking history. (Equivalent to "История" button)
 -   `/profile`: Displays your user profile. (Equivalent to "👤 Профиль" button)
 -   `/setname <новое_имя>`: Sets or updates your display name in the profile. (The bot will prompt for the name if `<новое_имя>` is not provided directly with the command in this version, but rather after typing `/setname`).
+-   `/leaderboard` or `/top`: Displays the top 10 users by score. (Equivalent to "🏆 Топ" button)
 
 ## Project Structure Overview
 
