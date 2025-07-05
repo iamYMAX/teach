@@ -64,7 +64,8 @@ namespace Omnieye.Bot
 
         private static readonly ReplyKeyboardMarkup MainCommandKeyboard = new ReplyKeyboardMarkup(new KeyboardButton[][]
         {
-            new KeyboardButton[] { new KeyboardButton("📘 Уроки"), new KeyboardButton("🧪 Тесты") },
+            // Используем константу из MainMenuKeyboard, которая теперь без эмодзи
+            new KeyboardButton[] { new KeyboardButton(OmnieyeBot.Keyboards.MainMenuKeyboard.LessonsButtonText), new KeyboardButton("🧪 Тесты") },
             new KeyboardButton[] { new KeyboardButton("🧠 Флеш-карточки"), new KeyboardButton("История") },
             new KeyboardButton[] { new KeyboardButton("🏆 Топ"), new KeyboardButton("👤 Профиль") },
             new KeyboardButton[] { new KeyboardButton("🔐 Выйти") }
