@@ -20,23 +20,26 @@ using System.Timers;
 using IOFile = System.IO.File;
 
 // Using statements for the NEW course navigation logic
-// using NewCourseService = OmnieyeBot.Services.CourseService; // Old static course service - no longer needed at Program level
-using NewMessageHandler = OmnieyeBot.BotHandlers.MessageHandler;
-using NewCourseContentLoaderService = OmnieyeBot.Services.CourseContentLoaderService; // Added
-// Note: Omnieye.Bot.States.UserSession (existing) is used by ExistingUserSessionService and NewMessageHandler.
+// Aliases removed, will use FQTNs or direct namespace usings
+// using NewMessageHandler = OmnieyeBot.BotHandlers.MessageHandler;
+// using NewCourseContentLoaderService = OmnieyeBot.Services.CourseContentLoaderService;
+using OmnieyeBot.BotHandlers; // For MessageHandler
+using OmnieyeBot.Services;    // For CourseContentLoaderService
+
 
 namespace Omnieye.Bot
 {
     class Program
     {
         // Existing services
+        // Use FQTN for existing UserSessionService to be absolutely clear
         private static Omnieye.Bot.Services.UserSessionService _userSessionService = new Omnieye.Bot.Services.UserSessionService();
         private static MaterialLoader _materialLoader = new MaterialLoader();
         private static TestLoaderService _testLoaderService = new TestLoaderService();
 
         // New services and handlers for course navigation
-        private static NewCourseContentLoaderService _courseContentLoaderService; // NEW
-        private static NewMessageHandler _newCourseMessageHandler;
+        private static OmnieyeBot.Services.CourseContentLoaderService _courseContentLoaderService;
+        private static OmnieyeBot.BotHandlers.MessageHandler _newCourseMessageHandler;
 
         private static ITelegramBotClient? _botClient;
         private static CancellationTokenSource? _cts;
@@ -164,11 +167,11 @@ namespace Omnieye.Bot
             _cts = new CancellationTokenSource();
 
             // Initialize NEW CourseContentLoaderService
-            _courseContentLoaderService = new NewCourseContentLoaderService();
+            _courseContentLoaderService = new OmnieyeBot.Services.CourseContentLoaderService();
 
             // Initialize NEW MessageHandler for course navigation
-            // It needs botClient, existing userSessionService (aliased), and the new courseContentLoaderService (aliased)
-            _newCourseMessageHandler = new NewMessageHandler(_botClient, _userSessionService, _courseContentLoaderService);
+            // It needs botClient, existing userSessionService, and the new courseContentLoaderService
+            _newCourseMessageHandler = new OmnieyeBot.BotHandlers.MessageHandler(_botClient, _userSessionService, _courseContentLoaderService);
 
             StartAutoBackup();
 

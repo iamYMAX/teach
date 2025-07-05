@@ -11,23 +11,26 @@ using Telegram.Bot.Types.ReplyMarkups;
 using OmnieyeBot.Models;
 using OmnieyeBot.Keyboards;
 using Omnieye.Bot.States;
-// Explicit using for services with aliases to avoid ambiguity
-using BotCourseContentLoaderService = OmnieyeBot.Services.CourseContentLoaderService;
-using ExistingUserSessionService = Omnieye.Bot.Services.UserSessionService;
+// Removed aliases, will use FQTNs or direct namespace usings
+// using BotCourseContentLoaderService = OmnieyeBot.Services.CourseContentLoaderService;
+// using ExistingUserSessionService = Omnieye.Bot.Services.UserSessionService;
+using OmnieyeBot.Services; // For CourseContentLoaderService
+using Omnieye.Bot.Services;  // For UserSessionService (existing)
+
 
 namespace OmnieyeBot.BotHandlers
 {
     public class CommandRouter
     {
         private readonly ITelegramBotClient _botClient;
-        private readonly ExistingUserSessionService _existingUserSessionService;
-        private readonly BotCourseContentLoaderService _courseContentLoaderService;
+        private readonly Omnieye.Bot.Services.UserSessionService _existingUserSessionService;
+        private readonly OmnieyeBot.Services.CourseContentLoaderService _courseContentLoaderService;
 
         private CourseStructureRoot? _courseStructureRoot;
 
         public CommandRouter(ITelegramBotClient botClient,
-                             ExistingUserSessionService userSessionService,
-                             BotCourseContentLoaderService courseContentLoaderService)
+                             Omnieye.Bot.Services.UserSessionService userSessionService,     // Use FQTN
+                             OmnieyeBot.Services.CourseContentLoaderService courseContentLoaderService) // Use FQTN
         {
             _botClient = botClient;
             _existingUserSessionService = userSessionService;
@@ -408,9 +411,9 @@ namespace OmnieyeBot.BotHandlers
             {
                 var messageText = $"📖 *{lesson.Title}*\n\n{lesson.Content}";
                 var inlineKeyboardMarkup = LessonKeyboard.GetLessonContentInlineKeyboard(userSession.CurrentLevelId, userSession.CurrentModuleIdForNav, lesson.LessonId);
-                await _botClient.SendTextMessageAsync(chatId, messageText, parseMode: ParseMode.Markdown, replyMarkup: inlineKeyboardMarkup, cancellationToken: ct);
+                await _botClient.SendTextMessageAsync(chatId, messageText, parseMode: ParseMode.Markdown, replyMarkup: inlineKeyboardMarkup, cancellationToken: ct); // Ensure ct is used
             } else {
-                await HandleShowLevelsAsync(chatId, userSession, cancellationToken, true); // Go to top if context lost
+                await HandleShowLevelsAsync(chatId, userSession, ct, true); // Ensure ct is used
             }
         }
 
@@ -528,9 +531,9 @@ namespace OmnieyeBot.BotHandlers
             {
                 var messageText = $"📖 *{lesson.Title}*\n\n{lesson.Content}";
                 var inlineKeyboardMarkup = LessonKeyboard.GetLessonContentInlineKeyboard(userSession.CurrentLevelId, userSession.CurrentModuleIdForNav, lesson.LessonId);
-                await _botClient.SendTextMessageAsync(chatId, messageText, parseMode: ParseMode.Markdown, replyMarkup: inlineKeyboardMarkup, cancellationToken: ct);
+                await _botClient.SendTextMessageAsync(chatId, messageText, parseMode: ParseMode.Markdown, replyMarkup: inlineKeyboardMarkup, cancellationToken: ct); // Ensure ct is used
             } else {
-                await HandleShowLevelsAsync(chatId, userSession, cancellationToken, true); // Go to top if context lost
+                await HandleShowLevelsAsync(chatId, userSession, ct, true); // Ensure ct is used
             }
         }
     }
