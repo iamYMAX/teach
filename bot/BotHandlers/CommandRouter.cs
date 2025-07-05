@@ -11,8 +11,9 @@ using Telegram.Bot.Types.ReplyMarkups;
 using OmnieyeBot.Models;
 using OmnieyeBot.Keyboards;
 using Omnieye.Bot.States;
-using OmnieyeBot.Services; // This namespace contains CourseContentLoaderService
-using ExistingUserSessionService = Omnieye.Bot.Services.UserSessionService; // Alias for clarity
+// Explicit using for services with aliases to avoid ambiguity
+using BotCourseContentLoaderService = OmnieyeBot.Services.CourseContentLoaderService;
+using ExistingUserSessionService = Omnieye.Bot.Services.UserSessionService;
 
 namespace OmnieyeBot.BotHandlers
 {
@@ -20,13 +21,13 @@ namespace OmnieyeBot.BotHandlers
     {
         private readonly ITelegramBotClient _botClient;
         private readonly ExistingUserSessionService _existingUserSessionService;
-        private readonly CourseContentLoaderService _courseContentLoaderService; // This is OmnieyeBot.Services.CourseContentLoaderService
+        private readonly BotCourseContentLoaderService _courseContentLoaderService;
 
-        private CourseStructureRoot? _courseStructureRoot; // Cache for the entire course structure
+        private CourseStructureRoot? _courseStructureRoot;
 
         public CommandRouter(ITelegramBotClient botClient,
-                             ExistingUserSessionService userSessionService, // Parameter uses alias
-                             CourseContentLoaderService courseContentLoaderService) // Parameter uses direct type from OmnieyeBot.Services
+                             ExistingUserSessionService userSessionService,
+                             BotCourseContentLoaderService courseContentLoaderService)
         {
             _botClient = botClient;
             _existingUserSessionService = userSessionService;
@@ -53,13 +54,13 @@ namespace OmnieyeBot.BotHandlers
             if (messageText == "/start")
             {
                 Console.WriteLine("[CommandRouter] Matched /start");
-                await HandleShowLevelsAsync(chatId, userSession, cancellationToken, true); // true to force reload/reset
+                await HandleShowLevelsAsync(chatId, userSession, cancellationToken, true);
                 return true;
             }
             if (messageText == MainMenuKeyboard.LessonsButtonText)
             {
                 Console.WriteLine($"[CommandRouter] Matched '{MainMenuKeyboard.LessonsButtonText}'");
-                await HandleShowLevelsAsync(chatId, userSession, cancellationToken, true); // true to force reload/reset
+                await HandleShowLevelsAsync(chatId, userSession, cancellationToken, true);
                 return true;
             }
             if (messageText == LessonKeyboard.BackButtonText)
@@ -87,19 +88,18 @@ namespace OmnieyeBot.BotHandlers
                 return true;
             }
 
-            return false; // Command not handled by this router
+            return false;
         }
 
-        // Renamed from HandleStartCommandAsync to reflect it now shows levels
         private async Task HandleShowLevelsAsync(long chatId, UserSession userSession, CancellationToken cancellationToken, bool isEntryPoint = false)
         {
-            if (isEntryPoint) // Reset navigation only if this is a top-level entry (like /start or "Уроки")
+            if (isEntryPoint)
             {
                 userSession.CurrentLevelId = 0;
                 userSession.CurrentModuleIdForNav = 0;
                 userSession.CurrentLessonIdForContext = 0;
                 userSession.CurrentLoadedModuleData = null;
-                userSession.CurrentInteractionContext = null; // Clear interaction context too
+                userSession.CurrentInteractionContext = null;
             }
 
             var courseData = await GetCourseStructureAsync();
@@ -117,25 +117,25 @@ namespace OmnieyeBot.BotHandlers
         {
             var levelTitle = levelButtonText.Replace(LessonKeyboard.LevelPrefix, "").Trim();
             var courseData = await GetCourseStructureAsync();
-            if (courseData == null) { /* error */ return; }
+            if (courseData == null) { await _botClient.SendTextMessageAsync(chatId, "Ошибка загрузки данных курса.", cancellationToken: cancellationToken); return; }
 
             var selectedLevel = courseData.Levels.FirstOrDefault(l => l.Title == levelTitle);
             if (selectedLevel == null)
             {
                 await _botClient.SendTextMessageAsync(chatId, "Выбранный уровень не найден.", cancellationToken: cancellationToken);
-                await HandleShowLevelsAsync(chatId, userSession, cancellationToken); // Show levels again
+                await HandleShowLevelsAsync(chatId, userSession, cancellationToken);
                 return;
             }
 
             userSession.CurrentLevelId = selectedLevel.LevelId;
-            userSession.CurrentModuleIdForNav = 0; // Reset module
-            userSession.CurrentLessonIdForContext = 0; // Reset lesson
-            userSession.CurrentLoadedModuleData = null; // Clear old module data
+            userSession.CurrentModuleIdForNav = 0;
+            userSession.CurrentLessonIdForContext = 0;
+            userSession.CurrentLoadedModuleData = null;
 
             if (selectedLevel.Modules == null || !selectedLevel.Modules.Any())
             {
                  await _botClient.SendTextMessageAsync(chatId, $"В уровне \"{selectedLevel.Title}\" пока нет модулей.", cancellationToken: cancellationToken);
-                 await HandleShowLevelsAsync(chatId, userSession, cancellationToken); // Show levels again
+                 await HandleShowLevelsAsync(chatId, userSession, cancellationToken);
                  return;
             }
 
@@ -145,7 +145,7 @@ namespace OmnieyeBot.BotHandlers
 
         private async Task HandleShowLessonsInModuleAsync(long chatId, string moduleButtonText, UserSession userSession, CancellationToken cancellationToken)
         {
-            if (userSession.CurrentLevelId == 0) // Level must be selected first
+            if (userSession.CurrentLevelId == 0)
             {
                 await _botClient.SendTextMessageAsync(chatId, "Сначала выберите уровень.", cancellationToken: cancellationToken);
                 await HandleShowLevelsAsync(chatId, userSession, cancellationToken);
@@ -154,21 +154,21 @@ namespace OmnieyeBot.BotHandlers
 
             var moduleTitle = moduleButtonText.Replace(LessonKeyboard.ModulePrefix, "").Trim();
             var courseData = await GetCourseStructureAsync();
-            if (courseData == null) { /* error */ return; }
+            if (courseData == null) { await _botClient.SendTextMessageAsync(chatId, "Ошибка загрузки данных курса.", cancellationToken: cancellationToken); return; }
 
             var selectedLevel = courseData.Levels.FirstOrDefault(l => l.LevelId == userSession.CurrentLevelId);
-            if (selectedLevel == null) { /* error, level not found */ await HandleShowLevelsAsync(chatId, userSession, cancellationToken); return; }
+            if (selectedLevel == null) { await _botClient.SendTextMessageAsync(chatId, "Текущий уровень не найден.", cancellationToken: cancellationToken); await HandleShowLevelsAsync(chatId, userSession, cancellationToken); return; }
 
             var selectedModule = selectedLevel.Modules.FirstOrDefault(m => m.Title == moduleTitle);
             if (selectedModule == null)
             {
                 await _botClient.SendTextMessageAsync(chatId, "Выбранный модуль не найден.", cancellationToken: cancellationToken);
-                await HandleShowModulesForLevelAsync(chatId, $"{LessonKeyboard.LevelPrefix}{selectedLevel.Title}", userSession, cancellationToken); // Show modules for current level
+                await HandleShowModulesForLevelAsync(chatId, $"{LessonKeyboard.LevelPrefix}{selectedLevel.Title}", userSession, cancellationToken);
                 return;
             }
 
             userSession.CurrentModuleIdForNav = selectedModule.ModuleId;
-            userSession.CurrentLoadedModuleData = selectedModule; // Cache the whole module
+            userSession.CurrentLoadedModuleData = selectedModule;
             userSession.CurrentLessonIdForContext = 0;
             Console.WriteLine($"[CommandRouter] In HandleShowLessonsInModuleAsync: Set LevelId='{userSession.CurrentLevelId}', ModuleId='{userSession.CurrentModuleIdForNav}', LoadedModule='{selectedModule.Title}'");
 
@@ -196,7 +196,6 @@ namespace OmnieyeBot.BotHandlers
             if (!int.TryParse(lessonIdString, out int lessonId))
             {
                 await _botClient.SendTextMessageAsync(chatId, "Ошибка: Не удалось распознать ID урока.", cancellationToken: cancellationToken);
-                // Show lessons for the current module again
                 await _botClient.SendTextMessageAsync(chatId, $"Уроки в модуле \"{userSession.CurrentLoadedModuleData.Title}\":",
                     replyMarkup: LessonKeyboard.GetLessonsInModuleKeyboard(userSession.CurrentLoadedModuleData), cancellationToken: cancellationToken);
                 return;
@@ -222,41 +221,60 @@ namespace OmnieyeBot.BotHandlers
 
         private async Task HandleBackCommandAsync(long chatId, UserSession userSession, CancellationToken cancellationToken)
         {
-            if (userSession.CurrentLessonIdForContext != 0) // Was viewing lesson content or its activities (flashcards/quiz)
-            {
-                userSession.CurrentLessonIdForContext = 0; // Clear lesson context
-                userSession.CurrentInteractionContext = null; // Clear interaction context (flashcards/quiz)
+            var courseData = await GetCourseStructureAsync(); // Needed for titles
+            if (courseData == null) { /* Error handling */ await _botClient.SendTextMessageAsync(chatId, "Ошибка загрузки данных курса для навигации.", cancellationToken: cancellationToken); return; }
 
-                // Go back to lesson list of the current module
-                if (userSession.CurrentLoadedModuleData != null) // Module data should be cached
+            if (userSession.CurrentInteractionContext != null) // If in flashcard or quiz session
+            {
+                // Exit flashcard/quiz and return to lesson content
+                if (userSession.CurrentInteractionContext.StartsWith("flashcard_session_"))
+                {
+                    await HandleExitFlashcardsCallbackAsync(userSession.CurrentInteractionContext, userSession, chatId, cancellationToken);
+                }
+                else if (userSession.CurrentInteractionContext.StartsWith("quiz_session_"))
+                {
+                    await HandleExitQuizCallbackAsync(userSession.CurrentInteractionContext, userSession, chatId, cancellationToken);
+                }
+                else // Unknown interaction, clear and go to lesson
+                {
+                    userSession.CurrentInteractionContext = null;
+                    // Proceed to logic below to determine lesson/module/level
+                }
+                // After exiting interaction, CurrentLessonIdForContext should still be set, so next "Back" will go to lesson list.
+                // The exit methods themselves should handle returning to the lesson view.
+                return;
+            }
+
+            if (userSession.CurrentLessonIdForContext != 0)
+            {
+                userSession.CurrentLessonIdForContext = 0;
+                userSession.CurrentInteractionContext = null;
+
+                if (userSession.CurrentLoadedModuleData != null)
                 {
                     await _botClient.SendTextMessageAsync(chatId, $"Уроки в модуле \"{userSession.CurrentLoadedModuleData.Title}\":",
                         replyMarkup: LessonKeyboard.GetLessonsInModuleKeyboard(userSession.CurrentLoadedModuleData), cancellationToken: cancellationToken);
                 }
-                // If module data somehow lost, try to go up to module list for current level
-                else if (userSession.CurrentLevelId != 0)
+                else if (userSession.CurrentLevelId != 0 && userSession.CurrentModuleIdForNav != 0) // Attempt to reconstruct module context
                 {
-                    var courseData = await GetCourseStructureAsync();
-                    var level = courseData?.Levels.FirstOrDefault(l => l.LevelId == userSession.CurrentLevelId);
-                    if (level != null) {
-                         await _botClient.SendTextMessageAsync(chatId, $"Модули уровня \"{level.Title}\":",
-                            replyMarkup: LessonKeyboard.GetModulesInLevelKeyboard(level), cancellationToken: cancellationToken);
-                    } else { // Fallback further
-                        await HandleShowLevelsAsync(chatId, userSession, cancellationToken);
-                    }
-                } else { // Fallback to top
+                    var level = courseData.Levels.FirstOrDefault(l => l.LevelId == userSession.CurrentLevelId);
+                    var module = level?.Modules.FirstOrDefault(m => m.ModuleId == userSession.CurrentModuleIdForNav);
+                    if (module != null) {
+                        userSession.CurrentLoadedModuleData = module; // Re-cache
+                         await _botClient.SendTextMessageAsync(chatId, $"Уроки в модуле \"{module.Title}\":",
+                            replyMarkup: LessonKeyboard.GetLessonsInModuleKeyboard(module), cancellationToken: cancellationToken);
+                    } else { await HandleShowLevelsAsync(chatId, userSession, cancellationToken); }
+                } else {
                      await HandleShowLevelsAsync(chatId, userSession, cancellationToken);
                 }
             }
-            else if (userSession.CurrentModuleIdForNav != 0) // Was viewing lesson list for a module
+            else if (userSession.CurrentModuleIdForNav != 0)
             {
-                userSession.CurrentModuleIdForNav = 0; // Clear module context
+                userSession.CurrentModuleIdForNav = 0;
                 userSession.CurrentLoadedModuleData = null;
-                // Go back to module list of the current level
                 if (userSession.CurrentLevelId != 0)
                 {
-                     var courseData = await GetCourseStructureAsync();
-                    var level = courseData?.Levels.FirstOrDefault(l => l.LevelId == userSession.CurrentLevelId);
+                    var level = courseData.Levels.FirstOrDefault(l => l.LevelId == userSession.CurrentLevelId);
                     if (level != null) {
                          await _botClient.SendTextMessageAsync(chatId, $"Модули уровня \"{level.Title}\":",
                             replyMarkup: LessonKeyboard.GetModulesInLevelKeyboard(level), cancellationToken: cancellationToken);
@@ -267,28 +285,25 @@ namespace OmnieyeBot.BotHandlers
                      await HandleShowLevelsAsync(chatId, userSession, cancellationToken);
                 }
             }
-            else if (userSession.CurrentLevelId != 0) // Was viewing module list for a level
+            else if (userSession.CurrentLevelId != 0)
             {
-                userSession.CurrentLevelId = 0; // Clear level context
-                await HandleShowLevelsAsync(chatId, userSession, cancellationToken); // Go back to level list
+                userSession.CurrentLevelId = 0;
+                await HandleShowLevelsAsync(chatId, userSession, cancellationToken);
             }
-            else // Was viewing level list (or at main menu and pressed back)
+            else
             {
-                // No higher state in this new navigation, so effectively "main menu" of courses is level list.
-                // Or, if "Back" from level list should go to original bot's main menu, then return false.
-                // For now, "Back" from level list re-shows level list or could show a top-level course message.
-                await HandleShowLevelsAsync(chatId, userSession, cancellationToken, true); // Re-show levels, reset all context
+                await HandleShowLevelsAsync(chatId, userSession, cancellationToken, true);
             }
         }
 
         // --- Flashcard Handling Methods ---
         public async Task HandleStartFlashcardSessionCallbackAsync(string callbackData, UserSession userSession, long chatId, CancellationToken ct)
         {
-            var parts = callbackData.Split('_'); // Expected: flashcards_{levelId}_{moduleId}_{lessonId}
-            if (parts.Length < 4) { /* error */ return; }
+            var parts = callbackData.Split('_');
+            if (parts.Length < 4) { await _botClient.SendTextMessageAsync(chatId, "Ошибка callback для флеш-карт (недостаточно частей).", cancellationToken: ct); return; }
             if (!int.TryParse(parts[1], out int levelId) ||
                 !int.TryParse(parts[2], out int moduleId) ||
-                !int.TryParse(parts[3], out int lessonId)) { /* error */ return; }
+                !int.TryParse(parts[3], out int lessonId)) { await _botClient.SendTextMessageAsync(chatId, "Ошибка callback для флеш-карт (неверные ID).", cancellationToken: ct); return; }
 
             Console.WriteLine($"[CBRouter] Start Flashcards: Lvl:{levelId},Mod:{moduleId},Les:{lessonId}");
             var courseData = await GetCourseStructureAsync();
@@ -298,22 +313,25 @@ namespace OmnieyeBot.BotHandlers
 
             if (lesson == null || lesson.Flashcards == null || !lesson.Flashcards.Any())
             {
-                await _botClient.AnswerCallbackQueryAsync(userSession.CurrentInteractionContext.Split('|')[0], "Для этого урока нет флеш-карточек.", showAlert:true, cancellationToken: ct); // Use actual callbackQueryId
+                // Attempt to answer callback query even on error to remove loading state
+                var callbackQueryId = userSession.CurrentInteractionContext?.Split('|').LastOrDefault(); // Assuming we store it like "type|queryId"
+                if (!string.IsNullOrEmpty(callbackQueryId)) await _botClient.AnswerCallbackQueryAsync(callbackQueryId, "Для этого урока нет флеш-карточек.", showAlert:true, cancellationToken: ct);
+                else await _botClient.SendTextMessageAsync(chatId, "Для этого урока нет флеш-карточек.", cancellationToken: ct);
                 return;
             }
 
             userSession.CurrentLevelId = levelId;
             userSession.CurrentModuleIdForNav = moduleId;
-            userSession.CurrentLessonIdForContext = lessonId;
-            userSession.CurrentInteractionContext = $"flashcard_session_{levelId}_{moduleId}_{lessonId}"; // Context for this session
-            // It's good to also cache the specific ModuleContent if not already done when navigating to lesson
+            userSession.CurrentLessonIdForContext = lessonId; // Set this for context
+            userSession.CurrentInteractionContext = $"flashcard_session_{levelId}_{moduleId}_{lessonId}";
             userSession.CurrentLoadedModuleData = courseData?.Levels.FirstOrDefault(l => l.LevelId == levelId)?.Modules.FirstOrDefault(m => m.ModuleId == moduleId);
-
 
             var random = new Random();
             userSession.CurrentFlashcardContentQueue = new Queue<FlashcardContent>(lesson.Flashcards.OrderBy(f => random.Next()));
             userSession.CurrentFlashcardContent = null;
 
+            // Remove previous inline keyboard if any by sending a new message or editing.
+            // For simplicity, send new message.
             await _botClient.SendTextMessageAsync(chatId, "Начинаем сессию флеш-карточек!", cancellationToken: ct);
             await ShowNextFlashcardAsync(userSession, chatId, ct);
         }
@@ -342,7 +360,7 @@ namespace OmnieyeBot.BotHandlers
 
         public async Task HandleShowAnswerCallbackAsync(string callbackData, UserSession userSession, long chatId, int messageId, CancellationToken ct)
         {
-            if (userSession.CurrentFlashcardContent == null) { /* error */ return; }
+            if (userSession.CurrentFlashcardContent == null) { await _botClient.SendTextMessageAsync(chatId, "Ошибка: нет активной карточки.", cancellationToken: ct); return; }
 
             var inlineKeyboard = new InlineKeyboardMarkup(new[]
             {
@@ -359,6 +377,13 @@ namespace OmnieyeBot.BotHandlers
             {
                 Console.WriteLine($"[CBRouter] Error editing flashcard answer: {ex.Message}. Sending new msg.");
                 await _botClient.SendTextMessageAsync(chatId, $"💡 *Ответ:*\n{userSession.CurrentFlashcardContent.Answer}", parseMode: ParseMode.Markdown, cancellationToken: ct);
+                // Re-send the question with next/exit buttons if edit failed and we sent answer as new.
+                 var originalQuestionKeyboard = new InlineKeyboardMarkup(new[]
+                {
+                    new [] { InlineKeyboardButton.WithCallbackData("Следующая карточка", $"next_flashcard_{userSession.CurrentLevelId}_{userSession.CurrentModuleIdForNav}_{userSession.CurrentLessonIdForContext}") },
+                    new [] { InlineKeyboardButton.WithCallbackData("Выйти из карточек", $"exit_flashcards_{userSession.CurrentLevelId}_{userSession.CurrentModuleIdForNav}_{userSession.CurrentLessonIdForContext}") }
+                });
+                await _botClient.SendTextMessageAsync(chatId, $"❓ *Вопрос (повтор):*\n{userSession.CurrentFlashcardContent.Question}", parseMode: ParseMode.Markdown, replyMarkup: originalQuestionKeyboard, cancellationToken: ct);
             }
         }
 
@@ -370,11 +395,11 @@ namespace OmnieyeBot.BotHandlers
         public async Task HandleExitFlashcardsCallbackAsync(string callbackData, UserSession userSession, long chatId, CancellationToken ct, bool sendConfirmation = true)
         {
             if(sendConfirmation) await _botClient.SendTextMessageAsync(chatId, "Выход из режима флеш-карточек.", cancellationToken: ct);
+            var previousInteractionContext = userSession.CurrentInteractionContext; // Store before clearing
             userSession.CurrentFlashcardContentQueue = null;
             userSession.CurrentFlashcardContent = null;
             userSession.CurrentInteractionContext = null;
 
-            // Try to return to lesson content
             var courseData = await GetCourseStructureAsync();
             var lesson = courseData?.Levels.FirstOrDefault(l => l.LevelId == userSession.CurrentLevelId)?
                                  .Modules.FirstOrDefault(m => m.ModuleId == userSession.CurrentModuleIdForNav)?
@@ -384,19 +409,19 @@ namespace OmnieyeBot.BotHandlers
                 var messageText = $"📖 *{lesson.Title}*\n\n{lesson.Content}";
                 var inlineKeyboardMarkup = LessonKeyboard.GetLessonContentInlineKeyboard(userSession.CurrentLevelId, userSession.CurrentModuleIdForNav, lesson.LessonId);
                 await _botClient.SendTextMessageAsync(chatId, messageText, parseMode: ParseMode.Markdown, replyMarkup: inlineKeyboardMarkup, cancellationToken: ct);
-            } else { // Fallback
-                await HandleShowLevelsAsync(chatId, userSession, cancellationToken);
+            } else {
+                await HandleShowLevelsAsync(chatId, userSession, cancellationToken, true); // Go to top if context lost
             }
         }
 
         // --- Lesson Quiz Handling Methods ---
         public async Task HandleStartQuizSessionCallbackAsync(string callbackData, UserSession userSession, long chatId, CancellationToken ct)
         {
-            var parts = callbackData.Split('_'); // Expected: quiz_{levelId}_{moduleId}_{lessonId}
-            if (parts.Length < 4) { /* error */ return; }
+            var parts = callbackData.Split('_');
+            if (parts.Length < 4) { await _botClient.SendTextMessageAsync(chatId, "Ошибка callback для квиза (недостаточно частей).", cancellationToken: ct); return; }
              if (!int.TryParse(parts[1], out int levelId) ||
                 !int.TryParse(parts[2], out int moduleId) ||
-                !int.TryParse(parts[3], out int lessonId)) { /* error */ return; }
+                !int.TryParse(parts[3], out int lessonId)) { await _botClient.SendTextMessageAsync(chatId, "Ошибка callback для квиза (неверные ID).", cancellationToken: ct); return; }
 
             Console.WriteLine($"[CBRouter] Start Quiz: Lvl:{levelId},Mod:{moduleId},Les:{lessonId}");
             var courseData = await GetCourseStructureAsync();
@@ -406,7 +431,9 @@ namespace OmnieyeBot.BotHandlers
 
             if (lesson == null || lesson.Quiz == null || !lesson.Quiz.Any())
             {
-                 await _botClient.AnswerCallbackQueryAsync(userSession.CurrentInteractionContext.Split('|')[0], "Для этого урока нет вопросов теста.", showAlert:true, cancellationToken: ct);
+                var callbackQueryId = userSession.CurrentInteractionContext?.Split('|').LastOrDefault(); // Assuming we store it like "type|queryId"
+                if (!string.IsNullOrEmpty(callbackQueryId)) await _botClient.AnswerCallbackQueryAsync(callbackQueryId, "Для этого урока нет вопросов теста.", showAlert:true, cancellationToken: ct);
+                else await _botClient.SendTextMessageAsync(chatId, "Для этого урока нет вопросов теста.", cancellationToken: ct);
                 return;
             }
 
@@ -415,7 +442,6 @@ namespace OmnieyeBot.BotHandlers
             userSession.CurrentLessonIdForContext = lessonId;
             userSession.CurrentInteractionContext = $"quiz_session_{levelId}_{moduleId}_{lessonId}";
             userSession.CurrentLoadedModuleData = courseData?.Levels.FirstOrDefault(l => l.LevelId == levelId)?.Modules.FirstOrDefault(m => m.ModuleId == moduleId);
-
 
             userSession.CurrentLessonQuizQuestions = new List<QuizQuestionContent>(lesson.Quiz);
             userSession.CurrentLessonQuizQuestionIndex = 0;
@@ -452,16 +478,13 @@ namespace OmnieyeBot.BotHandlers
 
         public async Task HandleQuizAnswerCallbackAsync(string callbackData, UserSession userSession, long chatId, int messageIdToEdit, CancellationToken ct)
         {
-            var parts = callbackData.Split('_'); // Expected: quiz_answer_{levelId}_{moduleId}_{lessonId}_{questionIndex}_{optionIndex}
-            if (parts.Length < 6) { /* error */ return; }
-            // int levelId = int.Parse(parts[2]);
-            // int moduleId = int.Parse(parts[3]);
-            // int lessonId = int.Parse(parts[4]);
-            if (!int.TryParse(parts[4], out int questionIndexFromCallback) || // Index in callback is from CurrentLessonQuizQuestionIndex
-                !int.TryParse(parts[5], out int chosenOptionIndex)) { /* error */ return; }
+            var parts = callbackData.Split('_');
+            if (parts.Length < 6) { await _botClient.SendTextMessageAsync(chatId, "Ошибка callback ответа на квиз (недостаточно частей).", cancellationToken: ct); return; }
+            if (!int.TryParse(parts[4], out int questionIndexFromCallback) ||
+                !int.TryParse(parts[5], out int chosenOptionIndex)) { await _botClient.SendTextMessageAsync(chatId, "Ошибка callback ответа на квиз (неверные ID).", cancellationToken: ct); return; }
 
             if (userSession.CurrentLessonQuizQuestions == null || questionIndexFromCallback != userSession.CurrentLessonQuizQuestionIndex)
-            { /* error, question mismatch or quiz not active */ return; }
+            { await _botClient.SendTextMessageAsync(chatId, "Ошибка: вопрос устарел или сессия теста неактивна.", cancellationToken: ct); return; }
 
             var question = userSession.CurrentLessonQuizQuestions[userSession.CurrentLessonQuizQuestionIndex];
             string resultEmoji = "❌";
@@ -507,8 +530,10 @@ namespace OmnieyeBot.BotHandlers
                 var inlineKeyboardMarkup = LessonKeyboard.GetLessonContentInlineKeyboard(userSession.CurrentLevelId, userSession.CurrentModuleIdForNav, lesson.LessonId);
                 await _botClient.SendTextMessageAsync(chatId, messageText, parseMode: ParseMode.Markdown, replyMarkup: inlineKeyboardMarkup, cancellationToken: ct);
             } else {
-                await HandleShowLevelsAsync(chatId, userSession, cancellationToken);
+                await HandleShowLevelsAsync(chatId, userSession, cancellationToken, true); // Go to top if context lost
             }
         }
     }
 }
+
+[end of bot/BotHandlers/CommandRouter.cs]
