@@ -89,15 +89,13 @@ namespace OmnieyeBot.BotHandlers
             }
 
             // Route based on callbackData prefix
-            if (callbackData.StartsWith("flashcards_"))
+            if (callbackData.StartsWith("flashcards_")) // This is to START a flashcard session
             {
-                await _commandRouter.HandleStartFlashcardSessionCallbackAsync(callbackData, userSession, chatId, cancellationToken);
+                await _commandRouter.HandleStartFlashcardSessionCallbackAsync(callbackData, callbackQuery.Id, userSession, chatId, cancellationToken);
             }
             else if (callbackData.StartsWith("show_answer_"))
             {
-                // Pass messageId for potential editing
-                // This is where GetLastBotMessageId was problematic. We should use callbackQuery.Message.MessageId
-                await _commandRouter.HandleShowAnswerCallbackAsync(callbackData, userSession, chatId, /* pass messageId for editing */ callbackQuery.Message.MessageId, cancellationToken);
+                await _commandRouter.HandleShowAnswerCallbackAsync(callbackData, userSession, chatId, callbackQuery.Message.MessageId, cancellationToken);
             }
             else if (callbackData.StartsWith("next_flashcard_"))
             {
@@ -107,18 +105,18 @@ namespace OmnieyeBot.BotHandlers
             {
                 await _commandRouter.HandleExitFlashcardsCallbackAsync(callbackData, userSession, chatId, cancellationToken);
             }
-            else if (callbackData.StartsWith("quiz_")) // General prefix for quiz actions
+            else if (callbackData.StartsWith("quiz_"))
             {
-                if (callbackData.Contains("_answer_")) // E.g., quiz_answer_{moduleId}_{lessonId}_{qIndex}_{optIndex}
+                if (callbackData.Contains("_answer_")) // Handles "quiz_answer_..."
                 {
                     await _commandRouter.HandleQuizAnswerCallbackAsync(callbackData, userSession, chatId, callbackQuery.Message.MessageId, cancellationToken);
                 }
-                else // E.g., quiz_{moduleId}_{lessonId} for starting quiz
+                else // Handles "quiz_{levelId}_{moduleId}_{lessonId}" for starting a quiz
                 {
-                    await _commandRouter.HandleStartQuizSessionCallbackAsync(callbackData, userSession, chatId, cancellationToken);
+                    await _commandRouter.HandleStartQuizSessionCallbackAsync(callbackData, callbackQuery.Id, userSession, chatId, cancellationToken);
                 }
             }
-            else if (callbackData.StartsWith("exit_quiz_")) // Specific exit if added as a button during quiz
+            else if (callbackData.StartsWith("exit_quiz_"))
             {
                  await _commandRouter.HandleExitQuizCallbackAsync(callbackData, userSession, chatId, cancellationToken);
             }

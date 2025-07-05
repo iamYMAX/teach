@@ -300,7 +300,7 @@ namespace OmnieyeBot.BotHandlers
         }
 
         // --- Flashcard Handling Methods ---
-        public async Task HandleStartFlashcardSessionCallbackAsync(string callbackData, UserSession userSession, long chatId, CancellationToken ct)
+        public async Task HandleStartFlashcardSessionCallbackAsync(string callbackData, string callbackQueryId, UserSession userSession, long chatId, CancellationToken ct)
         {
             var parts = callbackData.Split('_');
             if (parts.Length < 4) { await _botClient.SendTextMessageAsync(chatId, "Ошибка callback для флеш-карт (недостаточно частей).", cancellationToken: ct); return; }
@@ -316,10 +316,8 @@ namespace OmnieyeBot.BotHandlers
 
             if (lesson == null || lesson.Flashcards == null || !lesson.Flashcards.Any())
             {
-                // Attempt to answer callback query even on error to remove loading state
-                var callbackQueryId = userSession.CurrentInteractionContext?.Split('|').LastOrDefault(); // Assuming we store it like "type|queryId"
                 if (!string.IsNullOrEmpty(callbackQueryId)) await _botClient.AnswerCallbackQueryAsync(callbackQueryId, "Для этого урока нет флеш-карточек.", showAlert:true, cancellationToken: ct);
-                else await _botClient.SendTextMessageAsync(chatId, "Для этого урока нет флеш-карточек.", cancellationToken: ct);
+                else await _botClient.SendTextMessageAsync(chatId, "Для этого урока нет флеш-карточек.", cancellationToken: ct); // Fallback if no query ID
                 return;
             }
 
@@ -418,7 +416,7 @@ namespace OmnieyeBot.BotHandlers
         }
 
         // --- Lesson Quiz Handling Methods ---
-        public async Task HandleStartQuizSessionCallbackAsync(string callbackData, UserSession userSession, long chatId, CancellationToken ct)
+        public async Task HandleStartQuizSessionCallbackAsync(string callbackData, string callbackQueryId, UserSession userSession, long chatId, CancellationToken ct)
         {
             var parts = callbackData.Split('_');
             if (parts.Length < 4) { await _botClient.SendTextMessageAsync(chatId, "Ошибка callback для квиза (недостаточно частей).", cancellationToken: ct); return; }
@@ -434,9 +432,8 @@ namespace OmnieyeBot.BotHandlers
 
             if (lesson == null || lesson.Quiz == null || !lesson.Quiz.Any())
             {
-                var callbackQueryId = userSession.CurrentInteractionContext?.Split('|').LastOrDefault(); // Assuming we store it like "type|queryId"
                 if (!string.IsNullOrEmpty(callbackQueryId)) await _botClient.AnswerCallbackQueryAsync(callbackQueryId, "Для этого урока нет вопросов теста.", showAlert:true, cancellationToken: ct);
-                else await _botClient.SendTextMessageAsync(chatId, "Для этого урока нет вопросов теста.", cancellationToken: ct);
+                else await _botClient.SendTextMessageAsync(chatId, "Для этого урока нет вопросов теста.", cancellationToken: ct); // Fallback
                 return;
             }
 
