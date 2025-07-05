@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Omnieye.Bot.CoreModels; // For TestData, QuestionData, Lesson
+using Omnieye.Bot.CoreModels; // For TestData, QuestionData, Lesson, Flashcard
 using Omnieye.Bot.Services;
 using Omnieye.Bot.States;     // For UserProfile, UserSession, TestHistoryEntry, UserCurrentState, TestDifficulty, LessonLevel
 using Telegram.Bot;
@@ -25,7 +25,7 @@ namespace Omnieye.Bot
         private static ITelegramBotClient? _botClient;
         private static CancellationTokenSource? _cts;
 
-        // Old simple lists - effectively deprecated for listing, kept for potential direct /lesson <id> if not fully refactored
+        // Old simple lists - effectively deprecated
         private static readonly List<string> availableLessons_OLD_FORMAT = new List<string>
         {
             "Урок 1: Введение в систему", "Урок 2: Основы работы", "Урок 3: Продвинутые возможности"
@@ -40,8 +40,6 @@ namespace Omnieye.Bot
         {
             "Тест 1: Проверка знаний по основам", "Тест 2: Продвинутый тест"
         };
-
-
         private static readonly Dictionary<int, string> testDetails = new Dictionary<int, string>
         {
             { 1, "Тест 1: Проверка знаний по основам\n\nВключает вопросы по базовым темам." },
@@ -51,14 +49,14 @@ namespace Omnieye.Bot
         private static readonly ReplyKeyboardMarkup MainCommandKeyboard = new ReplyKeyboardMarkup(new[]
         {
             new KeyboardButton[] { new KeyboardButton("📘 Уроки"), new KeyboardButton("🧪 Тесты") },
-            new KeyboardButton[] { new KeyboardButton("История"), new KeyboardButton("👤 Профиль") },
-            new KeyboardButton[] { new KeyboardButton("🔐 Выйти") }
+            new KeyboardButton[] { new KeyboardButton("🧠 Флеш-карточки"), new KeyboardButton("История") },
+            new KeyboardButton[] { new KeyboardButton("👤 Профиль"), new KeyboardButton("🔐 Выйти") }
         })
         {
             ResizeKeyboard = true
         };
 
-        private static readonly ReplyKeyboardMarkup LessonDetailKeyboard = new ReplyKeyboardMarkup(new[] // Keyboard for when viewing a lesson's full content
+        private static readonly ReplyKeyboardMarkup LessonDetailKeyboard = new ReplyKeyboardMarkup(new[]
         {
             new KeyboardButton[] { "Назад к списку уроков" }
         })
@@ -81,6 +79,16 @@ namespace Omnieye.Bot
         {
             ResizeKeyboard = true,
             OneTimeKeyboard = true
+        };
+
+        private static readonly ReplyKeyboardMarkup FlashcardQuestionKeyboard = new ReplyKeyboardMarkup(new[]
+        {
+            new KeyboardButton[] { new KeyboardButton("Показать ответ") },
+            new KeyboardButton[] { new KeyboardButton("Следующая карточка") },
+            new KeyboardButton[] { new KeyboardButton("↩ Меню") }
+        })
+        {
+            ResizeKeyboard = true
         };
 
         private static readonly Dictionary<int, TestData> activeTestsData = new Dictionary<int, TestData>
@@ -107,6 +115,16 @@ namespace Omnieye.Bot
             new Lesson("Маршрутизация в сетях", "Принципы работы маршрутизаторов и таблиц маршрутизации.", "Маршрутизация - это процесс определения оптимального пути для передачи данных от источника к получателю через одну или несколько сетей. Маршрутизаторы используют таблицы маршрутизации для принятия этих решений.\n\nСтатическая маршрутизация настраивается вручную администратором.\nДинамическая маршрутизация использует протоколы (например, OSPF, BGP, RIP) для автоматического обмена информацией о маршрутах и обновления таблиц.", LessonLevel.Intermediate),
             new Lesson("Ключевые Сетевые Протоколы", "Обзор TCP, UDP, HTTP, DNS и их функций.", "TCP (Transmission Control Protocol) - протокол с установлением соединения, гарантирующий доставку данных и их порядок.\nUDP (User Datagram Protocol) - протокол без установления соединения, быстрый, но не гарантирует доставку.\nHTTP/HTTPS (HyperText Transfer Protocol/Secure) - основа для передачи данных в WWW.\nDNS (Domain Name System) - преобразует доменные имена в IP-адреса.", LessonLevel.Beginner),
             new Lesson("Виртуализация Сетей", "Основы SDN и NFV, их применение.", "SDN (Software-Defined Networking) отделяет управляющий уровень сети (control plane) от уровня передачи данных (data plane), позволяя централизованно управлять сетевыми устройствами.\nNFV (Network Functions Virtualization) виртуализирует сетевые функции, такие как брандмауэры, балансировщики нагрузки, позволяя им работать на стандартном оборудовании.", LessonLevel.Advanced)
+        };
+
+        private static readonly List<Flashcard> allFlashcardsData = new List<Flashcard>
+        {
+            new Flashcard("Что такое DHCP?", "Протокол динамической настройки узла (Dynamic Host Configuration Protocol), позволяющий устройствам автоматически получать IP-адреса и другие сетевые параметры.", LessonLevel.Beginner),
+            new Flashcard("Назовите 3 уровня модели OSI.", "Физический, Канальный, Сетевой (или любые три из семи: Физический, Канальный, Сетевой, Транспортный, Сеансовый, Представления, Прикладной).", LessonLevel.Beginner),
+            new Flashcard("Что означает VPN?", "Virtual Private Network (Виртуальная Частная Сеть) - технология, позволяющая создавать безопасное зашифрованное соединение поверх другой сети (обычно Интернет).", LessonLevel.Intermediate),
+            new Flashcard("Для чего используется порт 22/TCP?", "Для протокола SSH (Secure Shell), обеспечивающего безопасное удаленное управление.", LessonLevel.Intermediate),
+            new Flashcard("Что такое контейнеризация?", "Метод виртуализации на уровне операционной системы, позволяющий упаковывать приложение и его зависимости в изолированные окружения (контейнеры).", LessonLevel.Advanced),
+            new Flashcard("Кратко опишите CI/CD.", "Continuous Integration / Continuous Delivery (or Deployment) - практики автоматизации сборки, тестирования и развертывания программного обеспечения.", LessonLevel.Advanced)
         };
 
         static async Task Main(string[] args)
@@ -192,6 +210,7 @@ namespace Omnieye.Bot
 
             if (session.CurrentState == UserCurrentState.TakingTest)
             {
+                // Test taking logic...
                 if (!session.ActiveTestId.HasValue || !activeTestsData.TryGetValue(session.ActiveTestId.Value, out var currentTestData) ||
                     session.CurrentQuestionIndex >= currentTestData.Questions.Count)
                 {
@@ -243,6 +262,37 @@ namespace Omnieye.Bot
                 return;
             }
 
+            // Flashcard handling (when in ReviewingFlashcards state)
+            if (session.CurrentState == UserCurrentState.ReviewingFlashcards)
+            {
+                bool flashcardActionProcessed = true;
+                switch (messageText)
+                {
+                    case "Показать ответ":
+                        if (session.CurrentFlashcard != null)
+                        {
+                            await botClient.SendTextMessageAsync(chatId, $"💡 Ответ: {session.CurrentFlashcard.Answer}", replyMarkup: FlashcardQuestionKeyboard, cancellationToken: cancellationToken);
+                        }
+                        else
+                        {
+                            await botClient.SendTextMessageAsync(chatId, "Ошибка: Текущая карточка не найдена.", replyMarkup: FlashcardQuestionKeyboard, cancellationToken: cancellationToken);
+                        }
+                        break;
+                    case "Следующая карточка":
+                        await ShowNextFlashcardAsync(botClient, session, chatId, cancellationToken);
+                        break;
+                    case "↩ Меню":
+                        session.EndFlashcardSession(); // Clears flashcard state and sets CurrentState to MainMenu
+                        await HandleStartCommandAsync(botClient, session, chatId, cancellationToken); // Shows main menu and keyboard
+                        break;
+                    default:
+                        flashcardActionProcessed = false; // Not a flashcard action button
+                        break;
+                }
+                if (flashcardActionProcessed) return; // Input was handled as a flashcard action
+            }
+
+
             if (session.IsAuthenticated)
             {
                 bool keyboardButtonProcessed = true;
@@ -250,17 +300,20 @@ namespace Omnieye.Bot
                 {
                     case "📘 Уроки": await HandleLessonsListAsync(botClient, session, chatId, cancellationToken); break;
                     case "🧪 Тесты": await HandleTestsListAsync(botClient, session, chatId, cancellationToken); break;
+                    case "🧠 Флеш-карточки": // New button for starting flashcards
+                        await StartFlashcardSessionAsync(botClient, session, chatId, cancellationToken);
+                        break;
                     case "История": await HandleHistoryAsync(botClient, session, chatId, cancellationToken); break;
                     case "👤 Профиль": await HandleProfileAsync(botClient, session, chatId, cancellationToken); break;
-                    case "Назад": // Generic "Назад" from TestDetailKeyboard
+                    case "Назад":
                         if (session.CurrentState == UserCurrentState.ViewingTestDetail) await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
-                        else // Fallback if "Назад" is pressed from an unexpected state for this button
+                        else
                         {
                             await botClient.SendTextMessageAsync(chatId, "Главное меню.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
                             session.CurrentState = UserCurrentState.MainMenu;
                         }
                         break;
-                    case "Назад к списку уроков": // Specific for lesson content view
+                    case "Назад к списку уроков":
                          await HandleLessonsListAsync(botClient, session, chatId, cancellationToken);
                          break;
                     case "Начать тест":
@@ -268,7 +321,7 @@ namespace Omnieye.Bot
                         else if (session.CurrentState == UserCurrentState.ViewingTestDetail && !session.ViewingItemId.HasValue) await botClient.SendTextMessageAsync(chatId, "Ошибка: не удалось определить, какой тест запустить.", replyMarkup: TestDetailKeyboard, cancellationToken: cancellationToken);
                         else await botClient.SendTextMessageAsync(chatId, "Пожалуйста, сначала выберите тест из списка.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
                         break;
-                    case "Вернуться в меню": // After test completion
+                    case "Вернуться в меню":
                         await HandleStartCommandAsync(botClient, session, chatId, cancellationToken);
                         session.CurrentState = UserCurrentState.MainMenu;
                         break;
@@ -291,7 +344,7 @@ namespace Omnieye.Bot
                              inputHandled = true;
                         } else {
                             await botClient.SendTextMessageAsync(chatId, "Неверный номер урока.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
-                            inputHandled = true; // Still handled as an attempt to select
+                            inputHandled = true;
                         }
                     }
                     else if (session.CurrentState == UserCurrentState.ViewingTestList)
@@ -503,7 +556,6 @@ namespace Omnieye.Bot
                 session.CurrentState = UserCurrentState.MainMenu;
                 return;
             }
-            // This now directly calls HandleLessonContentAsync if lessonNumber is valid index for allLessonsData
             if (lessonNumber > 0 && lessonNumber <= allLessonsData.Count)
             {
                 await HandleLessonContentAsync(botClient, session, chatId, allLessonsData[lessonNumber - 1], ct);
@@ -511,7 +563,7 @@ namespace Omnieye.Bot
             else
             {
                  await botClient.SendTextMessageAsync(chatId, "Извините, урок с таким номером не найден.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
-                 session.CurrentState = UserCurrentState.ViewingLessonList; // Or MainMenu
+                 session.CurrentState = UserCurrentState.ViewingLessonList;
             }
         }
 
@@ -549,7 +601,7 @@ namespace Omnieye.Bot
             _ => "⚪"
         };
 
-        static string GetDifficultyIcon(TestDifficulty difficulty) => difficulty switch // Renamed from GetTestDifficultyIcon for consistency
+        static string GetDifficultyIcon(TestDifficulty difficulty) => difficulty switch
         {
             TestDifficulty.Easy => "🟢",
             TestDifficulty.Medium => "🟡",
@@ -667,10 +719,9 @@ namespace Omnieye.Bot
         {
             if (activeTestsData.TryGetValue(testId, out var testData))
             {
-                // Use testDetails dictionary for the summary if available, otherwise, just test name.
-                string description = testDetails.TryGetValue(testId, out var desc) ? desc : testData.TestName;
+                string description = testDetails.TryGetValue(testId, out var desc) ? desc : $"Тест: {testData.TestName}";
                 var icon = GetDifficultyIcon(testData.Difficulty);
-                string fullDetailText = $"{icon} *{testData.TestName}*\n{description}"; // Use testData.TestName for title consistency
+                string fullDetailText = $"{icon} *{testData.TestName}*\n{description}";
 
                 await SendLongMessageAsync(botClient, chatId, fullDetailText, ct, TestDetailKeyboard, parseMode: ParseMode.Markdown);
                 session.CurrentState = UserCurrentState.ViewingTestDetail;
@@ -812,9 +863,6 @@ namespace Omnieye.Bot
             {
                 bool isLastChunk = i == chunks.Count - 1;
 
-                // Determine the parseMode for the current chunk.
-                // If a specific parseMode is provided for the whole message, use it for all chunks.
-                // Otherwise (if parseMode is null), don't specify parseMode to Telegram.
                 ParseMode? currentChunkParseMode = parseMode;
 
                 if (currentChunkParseMode.HasValue)

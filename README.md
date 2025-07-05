@@ -21,6 +21,12 @@ This project aims to create an educational platform consisting of:
 -   **Lesson System:**
     -   Lessons are categorized by difficulty (Beginner 🟢, Intermediate 🟡, Advanced 🔴) and become available based on your user Level.
     -   Access lessons via the "📘 Уроки" button.
+-   **Flashcards Mode (🧠 Флеш-карточки):**
+    -   Review key concepts with flashcards (question/answer format).
+    -   Flashcards are filtered by your user Level.
+    -   Navigate through cards, show answers, and return to the main menu.
+-   **Interactive Testing:**
+    -   `/test <number>`: Starts an interactive test session. Users answer questions by pressing dynamically generated option buttons.
     -   The list shows lesson titles with difficulty icons and summaries.
     -   Type the exact lesson title from the list to view its full content.
     -   A "Назад к списку уроков" button allows returning from the lesson content view.
@@ -92,6 +98,7 @@ After logging in, a command keyboard will appear with quick actions:
 -   **"🧪 Тесты"**: Displays a list of available tests. Send the number of a test to view its details.
 -   **"История"**: Shows your test-taking history (requires prior test completions).
 -   **"👤 Профиль"**: Displays your user profile.
+-   **"🧠 Флеш-карточки"**: Starts a flashcard review session based on your level.
 -   **"🔐 Выйти"**: Logs you out and removes the keyboard.
 
 When viewing the lesson list (after pressing "📘 Уроки"):

@@ -8,7 +8,8 @@ namespace Omnieye.Bot.States
         ViewingTestList,
         ViewingTestDetail,
         TakingTest,
-        WaitingForNameInput // New state for setting name
+        WaitingForNameInput, // New state for setting name
+        ReviewingFlashcards // New state for flashcard mode
     }
 
     public enum TestDifficulty

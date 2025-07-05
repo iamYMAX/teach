@@ -32,4 +32,19 @@ namespace Omnieye.Bot.CoreModels
             Difficulty = difficulty;
         }
     }
+
+    public class Flashcard
+    {
+        public string Question { get; set; } = string.Empty;
+        public string Answer { get; set; } = string.Empty;
+        public LessonLevel Level { get; set; } = LessonLevel.Beginner; // Using LessonLevel for consistency
+
+        public Flashcard(string question, string answer, LessonLevel level)
+        {
+            Question = question;
+            Answer = answer;
+            Level = level;
+        }
+        public Flashcard() { } // For deserialization or default instantiation
+    }
 }

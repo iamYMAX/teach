@@ -51,6 +51,12 @@ namespace Omnieye.Bot.States
         [JsonIgnore] // Not persisted as it's context for current view only
         public string? ViewingLessonTitle { get; set; } = null;
 
+        // Properties for Flashcard mode
+        [JsonIgnore]
+        public Queue<Flashcard>? FlashcardQueue { get; set; } = null;
+        [JsonIgnore]
+        public Flashcard? CurrentFlashcard { get; set; } = null;
+
         [JsonConstructor]
         public UserSession(long userId)
         {
@@ -93,6 +99,16 @@ namespace Omnieye.Bot.States
                                     // For now, let's assume UserTestState (from Models) is separate and might be for a different feature or old code.
                                     // The prompt indicates "Сохранять в сессии пользователя ID теста и текущий индекс вопроса = 0" for the new test.
             CurrentState = UserCurrentState.MainMenu; // Default to main menu after test, can be overridden by caller.
+        }
+
+        public void EndFlashcardSession()
+        {
+            FlashcardQueue = null;
+            CurrentFlashcard = null;
+            if (CurrentState == UserCurrentState.ReviewingFlashcards) // Only change state if currently in flashcards
+            {
+                CurrentState = UserCurrentState.MainMenu;
+            }
         }
     }
 }
