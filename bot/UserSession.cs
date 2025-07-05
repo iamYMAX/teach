@@ -7,7 +7,7 @@ namespace Omnieye.Bot.States
 {
     public class TestHistoryEntry
     {
-        public int TestId { get; set; }
+        public string? TestIdString { get; set; } // Changed from int TestId to string? TestIdString
         public string TestTitle { get; set; } = string.Empty;
         public DateTime PassedAt { get; set; }
         public int TotalQuestions { get; set; }
@@ -28,10 +28,10 @@ namespace Omnieye.Bot.States
         public UserCurrentState CurrentState { get; set; } = UserCurrentState.MainMenu;
 
         // Optional: to remember which item was selected for detail view
-        public int? ViewingItemId { get; set; }
+        public string? ViewingItemIdString { get; set; } // Changed from int? ViewingItemId
 
         // Properties for active test taking
-        public int? ActiveTestId { get; set; } = null;
+        public string? ActiveTestId { get; set; } = null; // Changed from int? to string?
         public int CurrentQuestionIndex { get; set; } = 0; // Index for the question being currently displayed/answered
         public int CurrentTestScore { get; set; } = 0;
 
@@ -57,6 +57,21 @@ namespace Omnieye.Bot.States
         [JsonIgnore]
         public Flashcard? CurrentFlashcard { get; set; } = null;
 
+        // Temporary storage for admin operations
+        [JsonIgnore]
+        public Lesson? PendingLesson { get; set; }
+        [JsonIgnore]
+        public TestData? PendingTest { get; set; }
+        [JsonIgnore]
+        public string? EditingItemId { get; set; } // ID of the lesson/test being edited
+        [JsonIgnore]
+        public string? EditingField { get; set; } // Field being edited (e.g., "title", "content")
+        [JsonIgnore]
+        public QuestionData? PendingQuestion { get; set; }
+        [JsonIgnore]
+        public int? EditingQuestionIndex { get; set; } // For editing a specific question in a test
+
+
         [JsonConstructor]
         public UserSession(long userId)
         {
@@ -79,9 +94,9 @@ namespace Omnieye.Bot.States
         // Let's remove the old StartTest/EndTest related to UserTestState from Models.Omnieye.Bot.Models.Test
         // and focus on the new structure.
 
-        public void StartNewTest(int testId) // Renamed for clarity with new system
+        public void StartNewTest(string testId) // Changed parameter from int to string
         {
-            ActiveTestId = testId;
+            ActiveTestId = testId; // ActiveTestId is already string?
             CurrentQuestionIndex = 0;
             CurrentTestScore = 0;
             CurrentState = UserCurrentState.TakingTest; // Set state when test starts

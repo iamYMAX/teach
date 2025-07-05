@@ -9,7 +9,32 @@ namespace Omnieye.Bot.States
         ViewingTestDetail,
         TakingTest,
         WaitingForNameInput, // New state for setting name
-        ReviewingFlashcards // New state for flashcard mode
+        ReviewingFlashcards, // New state for flashcard mode
+
+        // Admin states
+        AdminRoot,
+        AdminAddingLessonTitle,
+        AdminAddingLessonDescription,
+        AdminAddingLessonContent,
+        AdminAddingLessonLevel,
+        AdminEditingLessonSelect,
+        AdminEditingLessonSelectField,
+        AdminEditingLessonEnterNewValue,
+        AdminDeletingLessonSelect,
+        AdminAddingTestTitle,
+        AdminAddingTestDescription,
+        AdminAddingTestLevel,
+        AdminAddingTestQuestionText,
+        AdminAddingTestQuestionOptions,
+        AdminAddingTestQuestionCorrectOption,
+        AdminAddingTestQuestionAskMore,
+        AdminEditingTestSelect,
+        AdminEditingTestSelectField,
+        AdminEditingTestEnterNewValue, // For test metadata
+        AdminEditingTestQuestionSelect,
+        AdminEditingTestQuestionEditField, // Field of a question (text, options, correct answer)
+        AdminEditingTestQuestionEnterNewValue, // For question fields
+        AdminDeletingTestSelect
     }
 
     public enum TestDifficulty
