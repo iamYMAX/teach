@@ -6,9 +6,9 @@ namespace OmnieyeBot.Keyboards
 {
     public static class LessonKeyboard
     {
-        public const string ModulePrefix = "➡️ Модуль: ";
-        public const string LessonPrefix = "➡️ Урок: ";
-        public const string BackButtonText = "⬅️ Назад"; // Common back button text
+        public const string ModulePrefix = "Модуль: "; // Emoji removed
+        public const string LessonPrefix = "Урок: ";   // Emoji removed
+        public const string BackButtonText = "Назад";   // Emoji removed
 
         // Method to get keyboard for displaying modules loaded from JSON
         public static ReplyKeyboardMarkup GetModulesKeyboard(List<ModuleContent> modules)
