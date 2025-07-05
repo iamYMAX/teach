@@ -37,7 +37,7 @@ namespace OmnieyeBot.BotHandlers
             var chatId = message.Chat.Id;
             var messageText = message.Text;
             var userSession = _existingUserSessionService.GetUserSession(chatId);
-            userSession.CurrentLoadedModuleData = null; // Clear any previously loaded module data on new command
+            // DO NOT clear CurrentLoadedModuleData here globally. It should be cleared specifically when starting new navigation.
 
             Console.WriteLine($"[CommandRouter] Routing message: '{messageText}'");
 
@@ -45,14 +45,20 @@ namespace OmnieyeBot.BotHandlers
             if (messageText == "/start")
             {
                 Console.WriteLine("[CommandRouter] Matched /start");
-                userSession.CurrentModuleIdForNav = null; // Reset module navigation context
+                // Reset navigation context fully when /start is called
+                userSession.CurrentModuleIdForNav = null;
+                userSession.CurrentLessonIdForContext = 0;
+                userSession.CurrentLoadedModuleData = null;
                 await HandleStartCommandAsync(chatId, userSession, cancellationToken);
                 return true;
             }
             else if (messageText == MainMenuKeyboard.LessonsButtonText) // MainMenuKeyboard.LessonsButtonText is now "Уроки"
             {
                 Console.WriteLine($"[CommandRouter] Matched '{MainMenuKeyboard.LessonsButtonText}' (no emoji)");
-                userSession.CurrentModuleIdForNav = null; // Reset module navigation context
+                // Reset navigation context when "Уроки" button is pressed to show module list
+                userSession.CurrentModuleIdForNav = null;
+                userSession.CurrentLessonIdForContext = 0;
+                userSession.CurrentLoadedModuleData = null;
                 await HandleShowCourseModulesAsync(chatId, userSession, cancellationToken);
                 return true;
             }
