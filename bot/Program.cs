@@ -990,20 +990,16 @@ namespace Omnieye.Bot
                 }
 
                 var users = _userSessionService.GetAllUserProfiles() ?? new List<UserProfile>();
-                var lessons = allLessonsData ?? new List<Lesson>(); // Using the static list from Program.cs
+                var lessons = allLessonsData ?? new List<Lesson>(); // Using the static list from Program.cs for lessons
 
-                var tests = new List<Omnieye.Bot.Models.Test>();
-                var loadedTest = _testLoaderService.LoadTest(); // TestLoaderService loads one Test structure
-                if (loadedTest != null)
-                {
-                    tests.Add(loadedTest);
-                }
+                // Load tests from AdminService (CoreModels.Test)
+                var adminPanelTests = await _adminService.GetTestsAsync() ?? new List<Omnieye.Bot.CoreModels.Test>();
 
                 var data = new BotData
                 {
                     Users = users,
-                    Lessons = lessons,
-                    Tests = tests
+                    Lessons = lessons, // Assuming BotData.Lessons is List<CoreModels.Lesson>
+                    Tests = adminPanelTests // BotData.Tests is now List<CoreModels.Test>
                 };
 
                 var options = new JsonSerializerOptions { WriteIndented = true };
@@ -1141,40 +1137,33 @@ namespace Omnieye.Bot
                 // Simplification: The export saves a List<Test>. The import will try to load this.
                 // However, TestLoaderService.LoadTest() returns one Test.
                 // And Program.cs uses activeTestsData (Dictionary<int, TestData>).
-                // This is a mismatch.
-                // For now, I will log that Test loading from BotData.Tests is not fully implemented
-                // due to structural differences between BotData.Tests (List<Models.Test>)
-                // and how tests are managed internally (activeTestsData: Dict<int, CoreModels.TestData>
-                // and TestLoaderService loading a single Models.Test).
-                // A proper TestService.LoadTests(List<Models.Test>) would be needed.
-
-                if (data.Tests != null && data.Tests.Any())
+                    // data.Tests is now List<CoreModels.Test>
+                    if (data.Tests != null)
                 {
-                    // TestService.LoadTests(data.Tests); // Placeholder
-                    Console.WriteLine($"Imported {data.Tests.Count} tests. Manual integration into TestLoaderService or activeTestsData would be needed with current structure.");
-                    // For now, let's try to replace the test loaded by _testLoaderService if there's one test in the import.
-                    if (data.Tests.Count == 1)
+                        await _adminService.SaveTestsAsync(data.Tests);
+                        Console.WriteLine($"Imported and saved {data.Tests.Count} tests using AdminService.");
+                        // The old logic for updating tests_junior_admin.json (which uses Models.Test)
+                        // would require a mapping from CoreModels.Test to Models.Test if still needed.
+                        // For now, this specific file update is removed from direct import to avoid type conflicts
+                        // and to centralize test data management via AdminService.
+                        // If tests_junior_admin.json needs to be synced, it's a separate task.
+                        /*
+                        if (data.Tests.Any()) // Example if we wanted to update the first test to tests_junior_admin.json
                     {
-                        // This doesn't directly update _testLoaderService, as it loads from file.
-                        // This is more of a conceptual "the main test is now this one".
-                        // The `tests_junior_admin.json` would ideally be updated by this import.
-                        // For now, we can log this. The export saves the state of tests_junior_admin.json.
-                        // The import should ideally overwrite tests_junior_admin.json with the imported test.
-                        var firstTest = data.Tests.First();
-                        string testFilePath = Path.Combine("materials/junior_admin", "tests_junior_admin.json");
-                        try
-                        {
-                            var testJson = JsonSerializer.Serialize(firstTest, new JsonSerializerOptions { WriteIndented = true });
-                            await IOFile.WriteAllTextAsync(testFilePath, testJson);
-                            Console.WriteLine($"Successfully updated '{testFilePath}' with the imported test data.");
-                            // Optionally, re-initialize _testLoaderService or clear its cache if it has one.
-                             _testLoaderService = new TestLoaderService(); // Re-instantiate to pick up changes on next LoadTest() call
-                        }
-                        catch(Exception ex)
-                        {
-                             Console.WriteLine($"Could not write imported test to {testFilePath}: {ex.Message}");
-                        }
+                            // This would require mapping CoreModels.Test to Models.Test
+                            // var firstCoreModelTest = data.Tests.First();
+                            // var modelTestToSave = MapCoreTestToModelTest(firstCoreModelTest); // Hypothetical mapping
+                            // string testFilePath = Path.Combine("materials/junior_admin", "tests_junior_admin.json");
+                            // try
+                            // {
+                            //     var testJson = JsonSerializer.Serialize(modelTestToSave, new JsonSerializerOptions { WriteIndented = true });
+                            //     await IOFile.WriteAllTextAsync(testFilePath, testJson);
+                            //     Console.WriteLine($"Successfully updated '{testFilePath}' with the imported test data (mapped).");
+                            //    _testLoaderService = new TestLoaderService();
+                            // }
+                            // catch(Exception ex) { Console.WriteLine($"Could not write mapped test to {testFilePath}: {ex.Message}"); }
                     }
+                        */
                 }
 
                 Console.WriteLine($"Data successfully imported from {Path.GetFullPath(filePath)}.");
