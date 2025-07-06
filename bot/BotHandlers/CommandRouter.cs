@@ -480,12 +480,28 @@ namespace OmnieyeBot.BotHandlers
 
         public async Task HandleQuizAnswerCallbackAsync(string callbackData, UserSession userSession, long chatId, int messageIdToEdit, CancellationToken ct)
         {
-            var parts = callbackData.Split('_');
-            if (parts.Length < 6) { await _botClient.SendTextMessageAsync(chatId, "Ошибка callback ответа на квиз (недостаточно частей).", cancellationToken: ct); return; }
-            if (!int.TryParse(parts[4], out int questionIndexFromCallback) ||
-                !int.TryParse(parts[5], out int chosenOptionIndex)) { await _botClient.SendTextMessageAsync(chatId, "Ошибка callback ответа на квиз (неверные ID).", cancellationToken: ct); return; }
+            Console.WriteLine($"[CommandRouter-QuizAnswer-ENTRY] Received callbackData: '{callbackData}'");
 
-            Console.WriteLine($"[CommandRouter-QuizAnswer] CallbackQIndex: {questionIndexFromCallback}, SessionQIndex: {userSession.CurrentLessonQuizQuestionIndex}, QuestionsInSession: {(userSession.CurrentLessonQuizQuestions == null ? "NULL" : userSession.CurrentLessonQuizQuestions.Count.ToString())}, ChosenOption: {chosenOptionIndex}");
+            var parts = callbackData.Split('_');
+            Console.WriteLine($"[CommandRouter-QuizAnswer-DEBUG] Raw parts: {string.Join("|", parts)}");
+
+            if (parts.Length < 7) { // Expecting quiz_answer_level_module_lesson_qIndex_optIndex (7 parts)
+                await _botClient.SendTextMessageAsync(chatId, "Ошибка callback ответа на квиз (неверный формат данных: ожидалось 7 частей).", cancellationToken: ct);
+                return;
+            }
+
+            string qIndexString = parts[5]; // qIndex is the 6th part (index 5)
+            string optIndexString = parts[6]; // optIndex is the 7th part (index 6)
+            Console.WriteLine($"[CommandRouter-QuizAnswer-DEBUG] Attempting to parse qIndexString='{qIndexString}', optIndexString='{optIndexString}'");
+
+            if (!int.TryParse(qIndexString, out int questionIndexFromCallback) ||
+                !int.TryParse(optIndexString, out int chosenOptionIndex))
+            {
+                await _botClient.SendTextMessageAsync(chatId, "Ошибка callback ответа на квиз (неверные ID вопросов/ответов).", cancellationToken: ct);
+                return;
+            }
+
+            Console.WriteLine($"[CommandRouter-QuizAnswer] Parsed CallbackQIndex: {questionIndexFromCallback}, Parsed ChosenOption: {chosenOptionIndex}, SessionQIndex: {userSession.CurrentLessonQuizQuestionIndex}, QuestionsInSession: {(userSession.CurrentLessonQuizQuestions == null ? "NULL" : userSession.CurrentLessonQuizQuestions.Count.ToString())}");
 
             if (userSession.CurrentLessonQuizQuestions == null || questionIndexFromCallback != userSession.CurrentLessonQuizQuestionIndex)
             {
