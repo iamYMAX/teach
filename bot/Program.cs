@@ -67,19 +67,34 @@ namespace Omnieye.Bot
 
         private static readonly ReplyKeyboardMarkup MainCommandKeyboard = new ReplyKeyboardMarkup(new KeyboardButton[][]
         {
-            // Используем константу из MainMenuKeyboard, которая теперь без эмодзи
-            new KeyboardButton[] { new KeyboardButton(OmnieyeBot.Keyboards.MainMenuKeyboard.LessonsButtonText), new KeyboardButton("🧪 Тесты") },
-            new KeyboardButton[] { new KeyboardButton("🧠 Флеш-карточки"), new KeyboardButton("История") },
-            new KeyboardButton[] { new KeyboardButton("🏆 Топ"), new KeyboardButton("👤 Профиль") },
-            new KeyboardButton[] { new KeyboardButton("🔐 Выйти") }
+            new KeyboardButton[] { new KeyboardButton(OmnieyeBot.Keyboards.MainMenuKeyboard.LessonsButtonText), new KeyboardButton("Тесты") }, // Emoji removed
+            new KeyboardButton[] { new KeyboardButton("Флеш-карточки"), new KeyboardButton("История") }, // Emoji removed
+            new KeyboardButton[] { new KeyboardButton("Топ"), new KeyboardButton("Профиль") }, // Emoji removed
+            new KeyboardButton[] { new KeyboardButton("Выйти") } // Emoji removed
         })
         {
             ResizeKeyboard = true
         };
 
+        // Constants for button texts to be used in switch cases (matching the keyboard above)
+        private const string TestsButtonText = "Тесты";
+        private const string FlashcardsButtonText = "Флеш-карточки";
+        private const string HistoryButtonText = "История";
+        private const string TopButtonText = "Топ";
+        private const string ProfileButtonText = "Профиль";
+        private const string LogoutButtonText = "Выйти";
+        private const string BackToLessonListButtonText = "Назад к списку уроков";
+        private const string StartTestButtonText = "Начать тест";
+        private const string BackButtonInTestDetailText = "Назад"; // Could conflict with general "Назад", be careful
+        private const string ReturnToMenuButtonText = "Вернуться в меню";
+        private const string ShowAnswerButtonText = "Показать ответ";
+        private const string NextCardButtonText = "Следующая карточка";
+        private const string MenuFromCardsButtonText = "↩ Меню";
+
+
         private static readonly ReplyKeyboardMarkup LessonDetailKeyboard = new ReplyKeyboardMarkup(new KeyboardButton[][]
         {
-            new KeyboardButton[] { "Назад к списку уроков" }
+            new KeyboardButton[] { BackToLessonListButtonText }
         })
         {
             ResizeKeyboard = true
@@ -87,7 +102,7 @@ namespace Omnieye.Bot
 
         private static readonly ReplyKeyboardMarkup TestDetailKeyboard = new ReplyKeyboardMarkup(new KeyboardButton[][]
         {
-            new KeyboardButton[] { "Начать тест", "Назад" }
+            new KeyboardButton[] { StartTestButtonText, BackButtonInTestDetailText }
         })
         {
             ResizeKeyboard = true
@@ -95,7 +110,7 @@ namespace Omnieye.Bot
 
         private static readonly ReplyKeyboardMarkup AfterTestMenuKeyboard = new ReplyKeyboardMarkup(new KeyboardButton[][]
         {
-            new KeyboardButton[] { "Вернуться в меню" }
+            new KeyboardButton[] { ReturnToMenuButtonText }
         })
         {
             ResizeKeyboard = true,
@@ -104,9 +119,9 @@ namespace Omnieye.Bot
 
         private static readonly ReplyKeyboardMarkup FlashcardQuestionKeyboard = new ReplyKeyboardMarkup(new KeyboardButton[][]
         {
-            new KeyboardButton[] { new KeyboardButton("Показать ответ") },
-            new KeyboardButton[] { new KeyboardButton("Следующая карточка") },
-            new KeyboardButton[] { new KeyboardButton("↩ Меню") }
+            new KeyboardButton[] { ShowAnswerButtonText },
+            new KeyboardButton[] { NextCardButtonText },
+            new KeyboardButton[] { MenuFromCardsButtonText }
         })
         {
             ResizeKeyboard = true
@@ -388,43 +403,47 @@ namespace Omnieye.Bot
                 // "📘 Уроки" is handled by _newCourseMessageHandler. If we reach here, it wasn't that.
                 switch (messageText)
                 {
-                    // case "📘 Уроки": // This case is now effectively handled by the new logic path
-                    case "🧪 Тесты": await HandleTestsListAsync(botClient, session, chatId, cancellationToken); break;
-                    case "🧠 Флеш-карточки":
+                    // "Уроки" is handled by _newCourseMessageHandler
+                    case TestsButtonText: await HandleTestsListAsync(botClient, session, chatId, cancellationToken); break;
+                    case FlashcardsButtonText:
                         await StartFlashcardSessionAsync(botClient, session, chatId, cancellationToken);
                         break;
-                    case "История": await HandleHistoryAsync(botClient, session, chatId, cancellationToken); break;
-                    case "👤 Профиль": await HandleProfileAsync(botClient, session, chatId, cancellationToken); break;
-                    case "🏆 Топ":
+                    case HistoryButtonText: await HandleHistoryAsync(botClient, session, chatId, cancellationToken); break;
+                    case ProfileButtonText: await HandleProfileAsync(botClient, session, chatId, cancellationToken); break;
+                    case TopButtonText:
                         await ShowLeaderboardAsync(botClient, session, chatId, cancellationToken);
                         break;
-                    case "Назад": // Generic "Назад" for original menu system
-                        if (session.CurrentState == UserCurrentState.ViewingTestDetail) await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
-                        else // Default "Назад" goes to main menu
-                        {
+                    case BackButtonInTestDetailText: // This is "Назад" from TestDetailKeyboard
+                                                     // It might be the same string as LessonKeyboard.BackButtonText.
+                                                     // Ensure context (session.CurrentState) is checked if text is ambiguous.
+                        if (session.CurrentState == UserCurrentState.ViewingTestDetail) {
+                            await HandleTestsListAsync(botClient, session, chatId, cancellationToken);
+                        } else {
+                            // If it's a generic "Назад" not caught by new course logic's HandleBackCommand
+                            // and not from TestDetail, then it's likely for main menu.
                             await botClient.SendTextMessageAsync(chatId, "Главное меню.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
                             session.CurrentState = UserCurrentState.MainMenu;
                         }
                         break;
-                    case "Назад к списку уроков": // Specific to old lesson viewing
+                    case BackToLessonListButtonText:
                          await HandleLessonsListAsync(botClient, session, chatId, cancellationToken);
                          break;
-                    case "Начать тест":
+                    case StartTestButtonText:
                         if (session.CurrentState == UserCurrentState.ViewingTestDetail && session.ViewingItemId.HasValue) await StartActualTestAsync(botClient, session, chatId, session.ViewingItemId.Value, cancellationToken);
                         else if (session.CurrentState == UserCurrentState.ViewingTestDetail && !session.ViewingItemId.HasValue) await botClient.SendTextMessageAsync(chatId, "Ошибка: не удалось определить, какой тест запустить.", replyMarkup: TestDetailKeyboard, cancellationToken: cancellationToken);
                         else await botClient.SendTextMessageAsync(chatId, "Пожалуйста, сначала выберите тест из списка.", replyMarkup: MainCommandKeyboard, cancellationToken: cancellationToken);
                         break;
-                    case "Вернуться в меню": // After test
-                        await HandleStartCommandAsync(botClient, session, chatId, cancellationToken); // This will show main menu
-                        session.CurrentState = UserCurrentState.MainMenu; // Ensure state is reset
+                    case ReturnToMenuButtonText:
+                        await HandleStartCommandAsync(botClient, session, chatId, cancellationToken);
+                        session.CurrentState = UserCurrentState.MainMenu;
                         break;
-                    case "🔐 Выйти": await HandleLogoutCommandAsync(botClient, session, chatId, cancellationToken); break;
-                    default: keyboardButtonProcessed = false; break; // Not a known button for this handler
+                    case LogoutButtonText: await HandleLogoutCommandAsync(botClient, session, chatId, cancellationToken); break;
+                    default: keyboardButtonProcessed = false; break;
                 }
                 if (keyboardButtonProcessed) return;
             }
 
-            // Handling numeric input for old lesson/test system
+            // Handling numeric input for old lesson/test system, and old flashcard text commands
             if (session.IsAuthenticated)
             {
                 bool inputHandled = false;
@@ -833,12 +852,37 @@ namespace Omnieye.Bot
 
         static async Task HandleProfileAsync(ITelegramBotClient botClient, UserSession session, long chatId, CancellationToken ct)
         {
-            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) { /* ... */ return; }
+            if (session.CurrentState == UserCurrentState.TakingTest && session.ActiveTestId.HasValue) {
+                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать профиль.", cancellationToken: ct);
+                 await DisplayCurrentTestQuestionAsync(botClient, session, chatId, ct);
+                 return;
+            }
             var profile = session.Profile;
+            if (profile == null) // Should not happen if session is initialized correctly
+            {
+                await botClient.SendTextMessageAsync(chatId, "Не удалось загрузить данные профиля.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                session.CurrentState = UserCurrentState.MainMenu;
+                return;
+            }
+
             if (profile.UserId == 0 && session.UserId != 0) profile.UserId = session.UserId;
-            string name = !string.IsNullOrWhiteSpace(profile.Name) ? profile.Name : $"User {profile.UserId}";
-            var profileTextBuilder = new StringBuilder(); /* ... */
-            await botClient.SendTextMessageAsync(chatId, profileTextBuilder.ToString(), parseMode: ParseMode.Markdown, replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+            string name = !string.IsNullOrWhiteSpace(profile.Name) ? profile.Name : $"User_{profile.UserId}"; // Ensure name is never empty
+
+            var profileTextBuilder = new StringBuilder();
+            profileTextBuilder.AppendLine($"👤 *Профиль*");
+            profileTextBuilder.AppendLine($"Имя: {name}");
+            profileTextBuilder.AppendLine($"Уровень: {profile.Level}"); // Assuming Level is int and will be ToString-ed
+            profileTextBuilder.AppendLine($"Тестов пройдено: {profile.TotalTestsTaken}");
+            profileTextBuilder.AppendLine($"Правильных ответов: {profile.TotalCorrectAnswers}");
+            profileTextBuilder.AppendLine($"Зарегистрирован: {profile.RegisteredAt:g}"); // 'g' for general short date/time
+
+            string textToSend = profileTextBuilder.ToString();
+            if (string.IsNullOrWhiteSpace(textToSend))
+            {
+                textToSend = "Данные профиля пусты или не удалось их сформировать.";
+            }
+
+            await botClient.SendTextMessageAsync(chatId, textToSend, parseMode: ParseMode.Markdown, replyMarkup: MainCommandKeyboard, cancellationToken: ct);
             session.CurrentState = UserCurrentState.MainMenu;
         }
 
@@ -866,13 +910,42 @@ namespace Omnieye.Bot
 
         static async Task ShowLeaderboardAsync(ITelegramBotClient botClient, UserSession currentSession, long chatId, CancellationToken ct)
         {
-            if (currentSession.CurrentState == UserCurrentState.TakingTest && currentSession.ActiveTestId.HasValue) { /* ... */ return; }
+            if (currentSession.CurrentState == UserCurrentState.TakingTest && currentSession.ActiveTestId.HasValue) {
+                 await botClient.SendTextMessageAsync(chatId, "Пожалуйста, завершите или остановите текущий тест (команда /stoptest), прежде чем просматривать лидерборд.", cancellationToken: ct);
+                 await DisplayCurrentTestQuestionAsync(botClient, currentSession, chatId, ct);
+                 return;
+            }
             var allUserProfiles = _userSessionService.GetAllUserProfiles();
-            if (allUserProfiles == null || !allUserProfiles.Any()) { /* ... */ return; }
-            var topUsers = allUserProfiles.OrderByDescending(p => p.TotalCorrectAnswers).ThenBy(p => p.RegisteredAt).Take(10).ToList();
-            if (!topUsers.Any()) { /* ... */ return; }
-            var leaderboardText = new StringBuilder("🏆 Топ 10 пользователей:\n"); /* ... */
-            await SendLongMessageAsync(botClient, chatId, leaderboardText.ToString(), ct, MainCommandKeyboard);
+
+            if (allUserProfiles == null || !allUserProfiles.Any())
+            {
+                await botClient.SendTextMessageAsync(chatId, "Лидерборд пока пуст или не удалось загрузить данные.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                currentSession.CurrentState = UserCurrentState.MainMenu;
+                return;
+            }
+
+            var topUsers = allUserProfiles
+                .OrderByDescending(p => p.TotalCorrectAnswers)
+                .ThenBy(p => p.RegisteredAt)
+                .Take(10)
+                .ToList();
+
+            if (!topUsers.Any())
+            {
+                await botClient.SendTextMessageAsync(chatId, "В лидерборде пока нет пользователей.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
+                currentSession.CurrentState = UserCurrentState.MainMenu;
+                return;
+            }
+
+            var leaderboardText = new StringBuilder("🏆 Топ 10 пользователей:\n");
+            int rank = 1;
+            foreach (var profile in topUsers)
+            {
+                string name = !string.IsNullOrWhiteSpace(profile.Name) ? profile.Name : $"User_{profile.UserId}";
+                leaderboardText.AppendLine($"{rank++}. {name} — {profile.TotalCorrectAnswers} баллов (Уровень: {profile.Level})");
+            }
+
+            await SendLongMessageAsync(botClient, chatId, leaderboardText.ToString(), ct, MainCommandKeyboard, parseMode: ParseMode.Markdown); // Added Markdown for potential formatting
             currentSession.CurrentState = UserCurrentState.MainMenu;
         }
 
