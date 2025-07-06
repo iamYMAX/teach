@@ -259,6 +259,18 @@ namespace Omnieye.Bot
 
             Console.WriteLine($"Original Handler: Received '{messageText}' from User {userId} in Chat {chatId}. State: {session.CurrentState}, WaitingForName: {session.WaitingForNameInput}");
 
+            // If a new interaction context (new flashcards/quiz) is active,
+            // ignore old text-based flashcard commands in this original handler.
+            if (!string.IsNullOrEmpty(session.CurrentInteractionContext) &&
+                (session.CurrentInteractionContext.StartsWith("flashcard_session_") || session.CurrentInteractionContext.StartsWith("quiz_session_")))
+            {
+                if (messageText == "Показать ответ" || messageText == "Следующая карточка" || messageText == "↩ Меню")
+                {
+                    Console.WriteLine($"[OriginalHandler] Ignoring text command '{messageText}' because a new interaction context is active: {session.CurrentInteractionContext}");
+                    return;
+                }
+            }
+
             if (session.WaitingForNameInput)
             {
                 if (messageText.StartsWith("/"))
