@@ -858,7 +858,7 @@ namespace Omnieye.Bot
                  return;
             }
             var profile = session.Profile;
-            if (profile == null) // Should not happen if session is initialized correctly
+            if (profile == null)
             {
                 await botClient.SendTextMessageAsync(chatId, "Не удалось загрузить данные профиля.", replyMarkup: MainCommandKeyboard, cancellationToken: ct);
                 session.CurrentState = UserCurrentState.MainMenu;
@@ -866,15 +866,16 @@ namespace Omnieye.Bot
             }
 
             if (profile.UserId == 0 && session.UserId != 0) profile.UserId = session.UserId;
-            string name = !string.IsNullOrWhiteSpace(profile.Name) ? profile.Name : $"User_{profile.UserId}"; // Ensure name is never empty
+            string rawName = !string.IsNullOrWhiteSpace(profile.Name) ? profile.Name : $"User_{profile.UserId}";
+            string escapedName = EscapeMarkdownV1(rawName); // Экранируем имя
 
             var profileTextBuilder = new StringBuilder();
             profileTextBuilder.AppendLine($"👤 *Профиль*");
-            profileTextBuilder.AppendLine($"Имя: {name}");
-            profileTextBuilder.AppendLine($"Уровень: {profile.Level}"); // Assuming Level is int and will be ToString-ed
+            profileTextBuilder.AppendLine($"Имя: {escapedName}"); // Используем экранированное имя
+            profileTextBuilder.AppendLine($"Уровень: {profile.Level}");
             profileTextBuilder.AppendLine($"Тестов пройдено: {profile.TotalTestsTaken}");
             profileTextBuilder.AppendLine($"Правильных ответов: {profile.TotalCorrectAnswers}");
-            profileTextBuilder.AppendLine($"Зарегистрирован: {profile.RegisteredAt:g}"); // 'g' for general short date/time
+            profileTextBuilder.AppendLine($"Зарегистрирован: {profile.RegisteredAt:g}");
 
             string textToSend = profileTextBuilder.ToString();
             if (string.IsNullOrWhiteSpace(textToSend))
@@ -983,6 +984,19 @@ namespace Omnieye.Bot
             if (userProfileLevel < 3) return allFlashcards.Where(f => f.Level == LessonLevel.Beginner).ToList();
             else if (userProfileLevel < 6) return allFlashcards.Where(f => f.Level == LessonLevel.Beginner || f.Level == LessonLevel.Intermediate).ToList();
             else return allFlashcards.ToList();
+        }
+
+        private static string EscapeMarkdownV1(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            var result = text;
+            // For old Markdown (ParseMode.Markdown), we need to escape: _, *, `, [
+            // No need to escape ] or ( ) as they are only special within links/images.
+            result = result.Replace("_", "\\_");
+            result = result.Replace("*", "\\*");
+            result = result.Replace("`", "\\`");
+            result = result.Replace("[", "\\[");
+            return result;
         }
 
     } // End of Program class
